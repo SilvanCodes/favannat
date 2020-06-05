@@ -16,7 +16,7 @@ pub mod activations {
     use std::ops::Deref;
 
     #[derive(Debug, Clone)]
-    pub struct ActivationFunction(fn(f64) -> f64);
+    pub struct ActivationFunction(pub fn(f64) -> f64);
     deref!(ActivationFunction, fn(f64) -> f64);
 
     impl Default for ActivationFunction {
