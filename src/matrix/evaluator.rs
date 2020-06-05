@@ -4,7 +4,7 @@ use ndarray::Array;
 #[derive(Debug)]
 pub struct MatrixEvaluator {
     pub stages: Vec<Array2<f64>>,
-    pub transformations: Vec<Vec<fn(f64) -> f64>>
+    pub transformations: Vec<crate::Transformations>
 }
 
 impl crate::network::Evaluator for MatrixEvaluator {

@@ -115,48 +115,6 @@ deref!(Outputs, Vec<NodeId>);
 pub struct Edges(Vec<Edge>);
 deref!(Edges, Vec<Edge>);
 
-#[cfg(test)]
-macro_rules! edges {
-    ( $( $from:literal -- $w:literal -> $to:literal ),* ) => {
-        {
-        let mut edges = Vec::new();
-
-        $(
-            edges.push(
-                Edge::new(NodeId($from), NodeId($to), $w)
-            );
-        )*
-
-        edges
-        }
-    };
-}
-
-#[cfg(test)]
-macro_rules! nodes {
-    ( $( $id:literal $activation:literal),* ) => {
-        {
-        let mut nodes = Vec::new();
-
-        $(
-            nodes.push(
-                Node::new($id, match $activation {
-                    'l' => Some(ActivationFunction::linear()),
-                    's' => Some(ActivationFunction::sigmoid()),
-                    't' => Some(ActivationFunction::tanh()),
-                    'g' => Some(ActivationFunction::gaussian()),
-                    _ => Some(ActivationFunction::sigmoid())
-                })
-            );
-        )*
-
-        nodes
-        }
-    };
-}
-
-
-
 #[derive(Debug)]
 pub struct Net (
     IoDim,
@@ -198,4 +156,44 @@ impl Net {
     pub fn outputs(&self) -> Vec<NodeId> {
         self.1.iter().rev().take((self.0).1).rev().map(|node| **node).collect()
     }
+}
+
+#[cfg(test)]
+macro_rules! edges {
+    ( $( $from:literal -- $w:literal -> $to:literal ),* ) => {
+        {
+        let mut edges = Vec::new();
+
+        $(
+            edges.push(
+                Edge::new(NodeId($from), NodeId($to), $w)
+            );
+        )*
+
+        edges
+        }
+    };
+}
+
+#[cfg(test)]
+macro_rules! nodes {
+    ( $( $id:literal $activation:literal),* ) => {
+        {
+        let mut nodes = Vec::new();
+
+        $(
+            nodes.push(
+                Node::new($id, match $activation {
+                    'l' => Some(ActivationFunction::linear()),
+                    's' => Some(ActivationFunction::sigmoid()),
+                    't' => Some(ActivationFunction::tanh()),
+                    'g' => Some(ActivationFunction::gaussian()),
+                    _ => Some(ActivationFunction::sigmoid())
+                })
+            );
+        )*
+
+        nodes
+        }
+    };
 }

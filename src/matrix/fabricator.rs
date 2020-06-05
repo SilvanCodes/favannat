@@ -72,9 +72,9 @@ impl network::Fabricator for MatrixFabricator {
         // println!("dependency_graph {:?}", dependency_graph);
 
         // contains list of matrices (stages) that form the computable net
-        let mut compute_stages: Vec<Vec<Vec<f64>>> = Vec::new();
+        let mut compute_stages: Vec<crate::Matrix> = Vec::new();
         // contains activation functions corresponding to each stage
-        let mut stage_transformations: Vec<Vec<fn(f64) -> f64>> = Vec::new();
+        let mut stage_transformations: Vec<crate::Transformations> = Vec::new();
         // set available nodes a.k.a net input
         let mut available_nodes = (*net.inputs()).clone();
 
@@ -88,9 +88,9 @@ impl network::Fabricator for MatrixFabricator {
         // gather compute stages by finding computable nodes and required carries until all dependencies are resolved
         while !dependency_graph.is_empty() {
             // setup new compute stage
-            let mut stage_matrix: Vec<Vec<f64>> = Vec::new();
+            let mut stage_matrix: crate::Matrix = Vec::new();
             // setup new transformations
-            let mut transformations: Vec<fn(f64) -> f64> = Vec::new();
+            let mut transformations: crate::Transformations = Vec::new();
             // list of nodes becoming available by compute stage
             let mut next_available_nodes: Vec<network::NodeId> = Vec::new();
 
@@ -127,17 +127,15 @@ impl network::Fabricator for MatrixFabricator {
                     // figure out carries
                     for (index, weight) in compute_or_carry.iter().enumerate() {
                         // if there is some partial dependency that is not carried yet
-                        if next_available_nodes.iter().find(|node| **node == available_nodes[index]).is_none() {
-                            if *weight != 0.0 {
-                                let mut carry = vec![0.0; available_nodes.len()];
-                                carry[index] = 1.0;
-                                // add carry vector
-                                stage_matrix.push(carry);
-                                // add identity function for carried vector
-                                transformations.push(activations::LINEAR);
-                                // add node as available
-                                next_available_nodes.push(available_nodes[index]);
-                            }
+                        if next_available_nodes.iter().find(|node| **node == available_nodes[index]).is_none() && *weight != 0.0 {
+                            let mut carry = vec![0.0; available_nodes.len()];
+                            carry[index] = 1.0;
+                            // add carry vector
+                            stage_matrix.push(carry);
+                            // add identity function for carried vector
+                            transformations.push(activations::LINEAR);
+                            // add node as available
+                            next_available_nodes.push(available_nodes[index]);
                         }
                     }
                 }
@@ -213,7 +211,7 @@ impl network::Fabricator for MatrixFabricator {
             compute_stages.push(stage_matrix);
             stage_transformations.push(transformations);
 
-            // set available nudes for next iteration
+            // set available nodes for next iteration
             available_nodes = next_available_nodes;
         }
 
