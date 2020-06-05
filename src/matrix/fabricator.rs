@@ -1,17 +1,17 @@
 // external imports
-use std::ops::Deref;
-use crate::network::{NodeId, Edge, Weight, activations};
 use ndarray::Array2;
 use ndarray::Array;
 // crate imports
+use crate::network::{NodeId, Edge, Weight, activations};
 use crate::network;
 // std imports
+use std::ops::Deref;
 use std::collections::HashMap;
 
 pub struct MatrixFabricator;
 
 impl MatrixFabricator {
-    fn to_arr2(mut dynamic_matrix: Vec<Vec<f64>>) -> Array2<f64> {
+    fn get_arr2(mut dynamic_matrix: Vec<Vec<f64>>) -> Array2<f64> {
         let dim_x = dynamic_matrix.len();
         let dim_y = dynamic_matrix[0].len();
 
@@ -25,6 +25,7 @@ impl MatrixFabricator {
 
 #[derive(Debug)]
 struct Dependency(NodeId, Weight);
+deref!(Dependency, NodeId);
 
 impl Dependency {
     pub fn weight(&self) -> Weight {
@@ -32,16 +33,9 @@ impl Dependency {
     }
 }
 
-impl Deref for Dependency {
-    type Target = NodeId;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 #[derive(Debug)]
 struct Dependencies(Vec<Dependency>);
+deref!(Dependencies, Vec<Dependency>);
 
 impl Dependencies {
     fn new(dependency: Dependency) -> Self{
@@ -52,14 +46,6 @@ impl Dependencies {
     }
 }
 
-impl Deref for Dependencies {
-    type Target = Vec<Dependency>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 type DependencyGraph = HashMap<network::NodeId, Dependencies>;
 
 impl network::Fabricator for MatrixFabricator {
@@ -67,13 +53,13 @@ impl network::Fabricator for MatrixFabricator {
 
     fn fabricate(net: network::Net) -> Result<Self::Output, &'static str> {
         // build dependency graph by collecting incoming edges per node
-        let mut dependency_graph: DependencyGraph = HashMap::new();
+        let mut dependency_graph: DependencyGraph = HashMap::new(); 
 
-        for Edge(start, end, weight) in net.edges().iter() {
+        for &Edge(start, end, weight) in net.edges().iter() {
             dependency_graph
-                .entry(**end)
-                .and_modify(|dependencies| dependencies.add(Dependency(**start, *weight)))
-                .or_insert(Dependencies::new(Dependency(start.0, *weight)));
+                .entry(*end)
+                .and_modify(|dependencies| dependencies.add(Dependency(*start, weight)))
+                .or_insert_with(|| Dependencies::new(Dependency(*start, weight)));
         }
 
         if dependency_graph.is_empty() {
@@ -141,7 +127,7 @@ impl network::Fabricator for MatrixFabricator {
                     // figure out carries
                     for (index, weight) in compute_or_carry.iter().enumerate() {
                         // if there is some partial dependency that is not carried yet
-                        if let None = next_available_nodes.iter().find(|node| **node == available_nodes[index]) {
+                        if next_available_nodes.iter().find(|node| **node == available_nodes[index]).is_none() {
                             if *weight != 0.0 {
                                 let mut carry = vec![0.0; available_nodes.len()];
                                 carry[index] = 1.0;
@@ -162,7 +148,7 @@ impl network::Fabricator for MatrixFabricator {
                 for (index, available_node) in available_nodes.iter().enumerate() {
                     if available_node == wanted_node {
                         // carry only if not carried already
-                        if let None = next_available_nodes.iter().find(|node| **node == *available_node) {
+                        if next_available_nodes.iter().find(|node| **node == *available_node).is_none() {
                             let mut carry = vec![0.0; available_nodes.len()];
                             carry[index] = 1.0;
                             // add carry vector
@@ -234,7 +220,7 @@ impl network::Fabricator for MatrixFabricator {
         Ok(super::evaluator::MatrixEvaluator {
             stages: compute_stages
                 .into_iter()
-                .map(|matrix| MatrixFabricator::to_arr2(matrix))
+                .map(MatrixFabricator::get_arr2)
                 .collect(),
             transformations: stage_transformations
         })

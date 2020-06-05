@@ -1,9 +1,23 @@
 use std::ops::Deref;
 
+macro_rules! deref {
+    ( $name:ident, $type:ty ) => {
+        impl Deref for $name {
+            type Target = $type;
+        
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+    };
+}
+
 pub mod activations {
+    use std::ops::Deref;
 
     #[derive(Debug)]
-    pub struct ActivationFunction(pub fn(f64) -> f64);
+    pub struct ActivationFunction(fn(f64) -> f64);
+    deref!(ActivationFunction, fn(f64) -> f64);
 
     impl Default for ActivationFunction {
         fn default() -> Self { ActivationFunction(SIGMOID) }
@@ -24,18 +38,6 @@ pub mod activations {
 
 use activations::ActivationFunction;
 
-macro_rules! transparent {
-    ( $name:ident, $type:ty ) => {
-        impl Deref for $name {
-            type Target = $type;
-        
-            fn deref(&self) -> &Self::Target {
-                &self.0
-            }
-        }
-    };
-}
-
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub struct NodeId(pub usize);
 
@@ -44,7 +46,7 @@ pub struct Node (
     NodeId,
     ActivationFunction
 );
-transparent!(Node, NodeId);
+deref!(Node, NodeId);
 
 impl Node {
     pub fn new(id: usize, activation: Option<ActivationFunction>) -> Self {
@@ -55,21 +57,21 @@ impl Node {
     }
 
     pub fn activation(&self) -> fn(f64) -> f64 {
-        (self.1).0
+        *self.1
     }
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct EdgeStart(pub NodeId);
-transparent!(EdgeStart, NodeId);
+deref!(EdgeStart, NodeId);
 
 #[derive(Clone, Copy, Debug)]
 pub struct EdgeEnd(pub NodeId);
-transparent!(EdgeEnd, NodeId);
+deref!(EdgeEnd, NodeId);
 
 #[derive(Clone, Copy, Debug)]
 pub struct Weight(pub f64);
-transparent!(Weight, f64);
+deref!(Weight, f64);
 
 #[derive(Clone, Copy, Debug)]
 pub struct Edge (
@@ -93,26 +95,27 @@ pub struct IoDim(usize, usize);
 
 #[derive(Debug)]
 pub struct Nodes(Vec<Node>);
-transparent!(Nodes, Vec<Node>);
+deref!(Nodes, Vec<Node>);
 
 impl Nodes {
     pub fn select(&self, id: NodeId) -> Option<&Node> {
-        self.0.iter().find(|node| ***node == id)
+        self.0.iter().find(|&node| **node == id)
     }
 }
 
 #[derive(Debug)]
 pub struct Inputs(Vec<NodeId>);
-transparent!(Inputs, Vec<NodeId>);
+deref!(Inputs, Vec<NodeId>);
 
 #[derive(Debug)]
 pub struct Outputs(Vec<NodeId>);
-transparent!(Outputs, Vec<NodeId>);
+deref!(Outputs, Vec<NodeId>);
 
 #[derive(Debug)]
 pub struct Edges(Vec<Edge>);
-transparent!(Edges, Vec<Edge>);
+deref!(Edges, Vec<Edge>);
 
+#[cfg(test)]
 macro_rules! edges {
     ( $( $from:literal -- $w:literal -> $to:literal ),* ) => {
         {
@@ -129,6 +132,7 @@ macro_rules! edges {
     };
 }
 
+#[cfg(test)]
 macro_rules! nodes {
     ( $( $id:literal $activation:literal),* ) => {
         {
