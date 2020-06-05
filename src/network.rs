@@ -15,7 +15,7 @@ macro_rules! deref {
 pub mod activations {
     use std::ops::Deref;
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct ActivationFunction(fn(f64) -> f64);
     deref!(ActivationFunction, fn(f64) -> f64);
 
@@ -41,7 +41,7 @@ use activations::ActivationFunction;
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub struct NodeId(pub usize);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Node (
     NodeId,
     ActivationFunction
