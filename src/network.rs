@@ -98,8 +98,8 @@ pub struct Nodes(Vec<Node>);
 deref!(Nodes, Vec<Node>);
 
 impl Nodes {
-    pub fn select(&self, id: NodeId) -> Option<&Node> {
-        self.0.iter().find(|&node| **node == id)
+    pub fn select(&self, id: NodeId) -> &Node {
+        self.0.iter().find(|&node| **node == id).unwrap()
     }
 }
 

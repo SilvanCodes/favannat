@@ -69,7 +69,7 @@ impl network::Fabricator for MatrixFabricator {
         // keep track of dependencies present
         let mut dependency_count = dependency_graph.len();
 
-        // println!("dependency_graph {:?}", dependency_graph);
+        // println!("initial dependency_graph {:#?}", dependency_graph);
 
         // contains list of matrices (stages) that form the computable net
         let mut compute_stages: Vec<crate::Matrix> = Vec::new();
@@ -98,12 +98,12 @@ impl network::Fabricator for MatrixFabricator {
                 // marker if all dependencies are available
                 let mut computable = true;
                 // eventual compute vector
-                let mut compute_or_carry = vec![0.0; available_nodes.len()];
+                let mut compute_or_carry = vec![f64::NAN; available_nodes.len()];
                 // check every dependency
                 for dependency in dependencies.iter() {
                     let mut found = false;
-                    for (index, id) in available_nodes.iter().enumerate() {
-                        if **dependency == *id {
+                    for (index, &id) in available_nodes.iter().enumerate() {
+                        if **dependency == id {
                             // add weight to compute vector at position of input
                             compute_or_carry[index] = *dependency.weight();
                             found = true;
@@ -115,19 +115,25 @@ impl network::Fabricator for MatrixFabricator {
                     }
                 }
                 if computable {
+                    // replace NAN with 0.0
+                    for n in &mut compute_or_carry {
+                        if n.is_nan() {
+                            *n = 0.0
+                        }
+                    }
                     // add vec to compute stage
                     stage_matrix.push(compute_or_carry);
                     // add activation function to stage transformations
                     transformations.push(
-                        net.nodes().select(*dependent_node).unwrap().activation()
+                        net.nodes().select(*dependent_node).activation()
                     );
                     // mark node as available in next iteration
                     next_available_nodes.push(*dependent_node);
                 } else {
                     // figure out carries
-                    for (index, weight) in compute_or_carry.iter().enumerate() {
+                    for (index, &weight) in compute_or_carry.iter().enumerate() {
                         // if there is some partial dependency that is not carried yet
-                        if next_available_nodes.iter().find(|node| **node == available_nodes[index]).is_none() && *weight != 0.0 {
+                        if next_available_nodes.iter().find(|node| **node == available_nodes[index]).is_none() && weight != f64::NAN {
                             let mut carry = vec![0.0; available_nodes.len()];
                             carry[index] = 1.0;
                             // add carry vector
@@ -167,7 +173,7 @@ impl network::Fabricator for MatrixFabricator {
 
             // if no dependency was removed no progess was made
             if dependency_graph.len() == dependency_count {
-                // println!("faulty net {:?}", net);
+                println!("faulty net {:?}", net);
                 println!("faulty dependency_graph {:#?}", dependency_graph);
                 return Err("can't resolve dependencies, net invalid");
             } else {
@@ -415,5 +421,26 @@ mod tests {
             assert!(false);
         }
 
+    }
+
+    #[test]
+    fn simple_net_evaluator_9() {
+        let some_net = Net::new(
+            2,
+            1,
+            nodes!(0'l', 1'l', 2'l'),
+            edges!(
+                0--0.5->2,
+                1--0.0->2
+            )
+        );
+
+        let evaluator = MatrixFabricator::fabricate(some_net).unwrap();
+        // println!("stages {:?}", evaluator.stages);
+
+        let result =  evaluator.evaluate(vec![5.0, 5.0]);
+        // println!("result {:?}", result);
+
+        assert_eq!(result, vec![2.5]);
     }
 }
