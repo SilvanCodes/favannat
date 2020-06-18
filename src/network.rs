@@ -1,199 +1,37 @@
-use std::ops::Deref;
-
-macro_rules! deref {
-    ( $name:ident, $type:ty ) => {
-        impl Deref for $name {
-            type Target = $type;
-        
-            fn deref(&self) -> &Self::Target {
-                &self.0
-            }
-        }
-    };
-}
+use std::fmt;
+use ndarray::{Array, Ix1};
 
 pub mod activations {
-    use std::ops::Deref;
-
-    #[derive(Debug, Clone)]
-    pub struct ActivationFunction(pub fn(f64) -> f64);
-    deref!(ActivationFunction, fn(f64) -> f64);
-
-    impl Default for ActivationFunction {
-        fn default() -> Self { ActivationFunction(SIGMOID) }
-    }
-
-    impl ActivationFunction {
-        pub fn linear() -> Self { ActivationFunction(LINEAR) }
-        pub fn sigmoid() -> Self { ActivationFunction(SIGMOID) }
-        pub fn tanh() -> Self { ActivationFunction(TANH) }
-        pub fn gaussian() -> Self { ActivationFunction(GAUSSIAN) }
-    }
-
     pub const LINEAR: fn(f64) -> f64 = |val| val;
     pub const SIGMOID: fn(f64) -> f64 = |val| 1.0 / (1.0 + (-1.0 * val).exp());
     pub const TANH: fn(f64) -> f64 = |val| 2.0 * SIGMOID(2.0 * val) - 1.0;
     pub const GAUSSIAN: fn(f64) -> f64 = |val| (val * val / -2.0).exp(); // a = 1, b = 0, c = 1
 }
 
-use activations::ActivationFunction;
-
-#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-pub struct NodeId(pub usize);
-
-#[derive(Debug, Clone)]
-pub struct Node (
-    NodeId,
-    ActivationFunction
-);
-deref!(Node, NodeId);
-
-impl Node {
-    pub fn new(id: usize, activation: Option<ActivationFunction>) -> Self {
-        Node (
-            NodeId(id),
-            activation.unwrap_or_default()
-        )
-    }
-
-    pub fn activation(&self) -> fn(f64) -> f64 {
-        *self.1
-    }
+pub trait NodeLike {
+    fn id(&self) -> usize;
+    fn activation(&self) -> fn(f64) -> f64;
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct EdgeStart(pub NodeId);
-deref!(EdgeStart, NodeId);
-
-#[derive(Clone, Copy, Debug)]
-pub struct EdgeEnd(pub NodeId);
-deref!(EdgeEnd, NodeId);
-
-#[derive(Clone, Copy, Debug)]
-pub struct Weight(pub f64);
-deref!(Weight, f64);
-
-#[derive(Clone, Copy, Debug)]
-pub struct Edge (
-    pub EdgeStart,
-    pub EdgeEnd,
-    pub Weight,
-);
-
-impl Edge {
-    pub fn new(from: NodeId, to: NodeId, weight: f64) -> Self {
-        Edge (
-            EdgeStart(from),
-            EdgeEnd(to),
-            Weight(weight)
-        )
-    }
+pub trait EdgeLike {
+    fn start(&self) -> usize;
+    fn end(&self) -> usize;
+    fn weight(&self) -> f64;
 }
 
-#[derive(Debug)]
-pub struct IoDim(usize, usize);
-
-#[derive(Debug)]
-pub struct Nodes(Vec<Node>);
-deref!(Nodes, Vec<Node>);
-
-impl Nodes {
-    pub fn select(&self, id: NodeId) -> &Node {
-        self.0.iter().find(|&node| **node == id).unwrap()
-    }
+pub trait NetLike<N: NodeLike + fmt::Debug, E: EdgeLike + fmt::Debug>: fmt::Debug {
+    fn nodes(&self) -> Vec<&N>;
+    fn edges(&self) -> Vec<&E>;
+    fn inputs(&self) -> Vec<&N>;
+    fn outputs(&self) -> Vec<&N>;
 }
 
-#[derive(Debug)]
-pub struct Inputs(Vec<NodeId>);
-deref!(Inputs, Vec<NodeId>);
-
-#[derive(Debug)]
-pub struct Outputs(Vec<NodeId>);
-deref!(Outputs, Vec<NodeId>);
-
-#[derive(Debug)]
-pub struct Edges(Vec<Edge>);
-deref!(Edges, Vec<Edge>);
-
-#[derive(Debug)]
-pub struct Net (
-    IoDim,
-    Nodes,
-    Edges
-);
-
-pub trait Evaluator {
-    fn evaluate(&self, input: Vec<f64>) -> Vec<f64>;
+pub trait Evaluator<D=Ix1> {
+    fn evaluate(&self, input: Array<f64, D>) -> Array<f64, D>;
 }
 
-pub trait Fabricator {
+pub trait Fabricator<N: NodeLike + fmt::Debug, E: EdgeLike + fmt::Debug> {
     type Output: Evaluator;
 
-    fn fabricate(net: Net) -> Result<Self::Output, &'static str>;
-}
-
-impl Net {
-    pub fn new(input: usize, output: usize, nodes: Vec<Node>, edges: Vec<Edge>) -> Self {
-        Net (
-            IoDim(input, output),
-            Nodes(nodes),
-            Edges(edges)
-        )
-    }
-
-    pub fn nodes(&self) -> &Nodes {
-        &self.1
-    }
-
-    pub fn edges(&self) -> &Edges {
-        &self.2
-    }
-
-    pub fn inputs(&self) -> Inputs {
-        Inputs(self.1.iter().take((self.0).0).map(|node| **node).collect())
-    }
-
-    pub fn outputs(&self) -> Vec<NodeId> {
-        self.1.iter().rev().take((self.0).1).rev().map(|node| **node).collect()
-    }
-}
-
-#[cfg(test)]
-macro_rules! edges {
-    ( $( $from:literal -- $w:literal -> $to:literal ),* ) => {
-        {
-        let mut edges = Vec::new();
-
-        $(
-            edges.push(
-                Edge::new(NodeId($from), NodeId($to), $w)
-            );
-        )*
-
-        edges
-        }
-    };
-}
-
-#[cfg(test)]
-macro_rules! nodes {
-    ( $( $id:literal $activation:literal),* ) => {
-        {
-        let mut nodes = Vec::new();
-
-        $(
-            nodes.push(
-                Node::new($id, match $activation {
-                    'l' => Some(ActivationFunction::linear()),
-                    's' => Some(ActivationFunction::sigmoid()),
-                    't' => Some(ActivationFunction::tanh()),
-                    'g' => Some(ActivationFunction::gaussian()),
-                    _ => Some(ActivationFunction::sigmoid())
-                })
-            );
-        )*
-
-        nodes
-        }
-    };
+    fn fabricate(net: &impl NetLike<N, E>) -> Result<Self::Output, &'static str>;
 }
