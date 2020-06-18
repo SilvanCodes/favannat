@@ -133,7 +133,7 @@ impl network::Fabricator for MatrixFabricator {
                     // figure out carries
                     for (index, &weight) in compute_or_carry.iter().enumerate() {
                         // if there is some partial dependency that is not carried yet
-                        if next_available_nodes.iter().find(|node| **node == available_nodes[index]).is_none() && weight != f64::NAN {
+                        if next_available_nodes.iter().find(|node| **node == available_nodes[index]).is_none() && !weight.is_nan() {
                             let mut carry = vec![0.0; available_nodes.len()];
                             carry[index] = 1.0;
                             // add carry vector
