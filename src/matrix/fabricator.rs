@@ -2,11 +2,28 @@
 use ndarray::Array2;
 use ndarray::Array;
 // crate imports
-use crate::network::{self, EdgeLike, NodeLike, activations};
+use crate::network::{EdgeLike, NodeLike, NetLike, Fabricator, StatefulFabricator, Recurrent};
 // std imports
 use std::collections::HashMap;
 
 pub struct MatrixFabricator;
+
+pub struct StatefulMatrixFabricator;
+
+impl<N,E> StatefulFabricator<N, E> for StatefulMatrixFabricator
+    where N: NodeLike + std::fmt::Debug, E: EdgeLike + std::fmt::Debug
+{
+    type Output = super::evaluator::StatefulMatrixEvaluator;
+
+    fn fabricate(net: &impl Recurrent<N, E>) -> Result<Self::Output, &'static str> {
+        let evaluator = MatrixFabricator::fabricate(&net.unroll())?;
+
+        Ok(super::evaluator::StatefulMatrixEvaluator {
+            internal: Array::zeros(net.memory()),
+            evaluator
+        })
+    }
+}
 
 impl MatrixFabricator {
     fn get_arr2(mut dynamic_matrix: Vec<Vec<f64>>) -> Array2<f64> {
@@ -22,11 +39,12 @@ impl MatrixFabricator {
 }
 
 
-impl<N, E> network::Fabricator<N, E> for MatrixFabricator
-    where N: NodeLike + std::fmt::Debug, E: EdgeLike + std::fmt::Debug {
+impl<N, E> Fabricator<N, E> for MatrixFabricator
+    where N: NodeLike + std::fmt::Debug, E: EdgeLike + std::fmt::Debug
+{
     type Output = super::evaluator::MatrixEvaluator;
 
-    fn fabricate(net: &impl network::NetLike<N, E>) -> Result<Self::Output, &'static str> {
+    fn fabricate(net: &impl NetLike<N, E>) -> Result<Self::Output, &'static str> {
         // build dependency graph by collecting incoming edges per node
         let mut dependency_graph: HashMap<usize, Vec<&E>> = HashMap::new(); 
 
@@ -114,7 +132,7 @@ impl<N, E> network::Fabricator<N, E> for MatrixFabricator
                             // add carry vector
                             stage_matrix.push(carry);
                             // add identity function for carried vector
-                            transformations.push(activations::LINEAR);
+                            transformations.push(|val| val);
                             // add node as available
                             next_available_nodes.push(available_nodes[index]);
                         }
@@ -133,7 +151,7 @@ impl<N, E> network::Fabricator<N, E> for MatrixFabricator
                             // add carry vector
                             stage_matrix.push(carry);
                             // add identity function for carried vector
-                            transformations.push(activations::LINEAR);
+                            transformations.push(|val| val);
                             // add node as available
                             next_available_nodes.push(*available_node);
                         }
@@ -208,10 +226,16 @@ impl<N, E> network::Fabricator<N, E> for MatrixFabricator
 
 #[cfg(test)]
 mod tests {
-    use super::MatrixFabricator;
-    use crate::network::{NetLike, NodeLike, EdgeLike, Fabricator, Evaluator};
-    use crate::network::activations;
+    use super::{MatrixFabricator, StatefulMatrixFabricator};
+    use crate::network::{NetLike, NodeLike, EdgeLike, Fabricator, Evaluator, Recurrent, StatefulFabricator, StatefulEvaluator};
     use ndarray::array;
+
+    pub mod activations {
+        pub const LINEAR: fn(f64) -> f64 = |val| val;
+        pub const SIGMOID: fn(f64) -> f64 = |val| 1.0 / (1.0 + (-1.0 * val).exp());
+        pub const TANH: fn(f64) -> f64 = |val| 2.0 * SIGMOID(2.0 * val) - 1.0;
+        pub const GAUSSIAN: fn(f64) -> f64 = |val| (val * val / -2.0).exp(); // a = 1, b = 0, c = 1
+    }
 
     #[derive(Debug)]
     pub struct Node {
@@ -298,13 +322,13 @@ mod tests {
     }
 
     macro_rules! nodes {
-        ( $( $id:literal $activation:literal),* ) => {
+        ( $( $activation:literal ),* ) => {
             {
             let mut nodes = Vec::new();
     
             $(
                 nodes.push(
-                    Node { id: $id, activation: match $activation {
+                    Node { id: nodes.len(), activation: match $activation {
                         'l' => activations::LINEAR,
                         's' => activations::SIGMOID,
                         't' => activations::TANH,
@@ -325,7 +349,7 @@ mod tests {
         let some_net = Net::new(
             1,
             1,
-            nodes!(0'l',1'l'),
+            nodes!('l','l'),
             edges!(0--0.5->1)
         );
 
@@ -344,7 +368,7 @@ mod tests {
         let some_net = Net::new(
             2,
             1,
-            nodes!(0'l', 1'l', 2'l'),
+            nodes!('l', 'l', 'l'),
             edges!(
                 0--0.5->2,
                 1--0.5->2
@@ -366,7 +390,7 @@ mod tests {
         let some_net = Net::new(
             1,
             1,
-            nodes!(0'l', 1'l', 2'l'),
+            nodes!('l', 'l', 'l'),
             edges!(
                 0--0.5->1,
                 1--0.5->2
@@ -388,7 +412,7 @@ mod tests {
         let some_net = Net::new(
             1,
             1,
-            nodes!(0'l', 1'l', 2'l'),
+            nodes!('l', 'l', 'l'),
             edges!(
                 0--0.5->1,
                 1--0.5->2,
@@ -411,7 +435,7 @@ mod tests {
         let some_net = Net::new(
             1,
             2,
-            nodes!(0'l', 1'l', 2'l', 3'l'),
+            nodes!('l', 'l', 'l', 'l'),
             edges!(
                 0--0.5->1,
                 1--0.5->2,
@@ -435,7 +459,7 @@ mod tests {
         let some_net = Net::new(
             1,
             2,
-            nodes!(0'l', 1'l', 2'l', 3'l'),
+            nodes!('l', 'l', 'l', 'l'),
             edges!(
                 0--0.5->1,
                 1--0.5->3,
@@ -458,8 +482,8 @@ mod tests {
         let some_net = Net::new(
             1,
             1,
-            nodes!(0'l', 1'l'),
-            edges!()
+            nodes!('l', 'l'),
+            Vec::new()
         );
 
         if let Err(message) = MatrixFabricator::fabricate(&some_net) {
@@ -475,7 +499,7 @@ mod tests {
         let some_net = Net::new(
             1,
             1,
-            nodes!(0'l', 1'l', 2'l'),
+            nodes!('l', 'l', 'l'),
             edges!(0--0.5->1)
         );
 
@@ -493,7 +517,7 @@ mod tests {
         let some_net = Net::new(
             1,
             1,
-            nodes!(0'l', 1'l', 2'l'),
+            nodes!('l', 'l', 'l'),
             edges!(1--0.5->2)
         );
 
@@ -510,7 +534,7 @@ mod tests {
         let some_net = Net::new(
             2,
             1,
-            nodes!(0'l', 1'l', 2'l'),
+            nodes!('l', 'l', 'l'),
             edges!(
                 0--0.5->2,
                 1--0.0->2
@@ -524,5 +548,53 @@ mod tests {
         // println!("result {:?}", result);
 
         assert_eq!(result, array![2.5]);
+    }
+
+    #[test]
+    fn stateful_net_evaluator_0() {
+
+        impl Recurrent<Node, Edge> for Net {
+            type Net = Net;
+
+            fn unroll(&self) -> Self::Net {
+                Net::new(
+                    4,
+                    4,
+                    nodes!('l', 'l', 'l', 'l', 'l', 'l', 'l', 'l'),
+                    edges!(
+                        // standard feed-forward
+                        0--1.0->4,
+                        1--1.0->5,
+
+                        // recurrent unrolled
+                        0--1.0->6,
+                        2--1.0->4,
+
+                        1--1.0->7,
+                        3--1.0->5
+                    )
+                )
+            }
+            fn memory(&self) -> usize {
+                2
+            }
+        }
+
+        let some_net = Net::new(0, 0, Vec::new(), Vec::new());
+
+        let mut evaluator = StatefulMatrixFabricator::fabricate(&some_net).unwrap();
+        // println!("stages {:?}", evaluator.stages);
+
+        let result = evaluator.evaluate(array![5.0, 0.0]);
+        assert_eq!(result, array![5.0, 0.0]);
+
+        let result = evaluator.evaluate(array![5.0, 5.0]);
+        assert_eq!(result, array![10.0, 5.0]);
+
+        let result = evaluator.evaluate(array![0.0, 5.0]);
+        assert_eq!(result, array![5.0, 10.0]);
+
+        let result = evaluator.evaluate(array![0.0, 0.0]);
+        assert_eq!(result, array![0.0, 5.0]);
     }
 }
