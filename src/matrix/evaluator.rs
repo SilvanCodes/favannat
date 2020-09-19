@@ -10,8 +10,8 @@ pub struct MatrixEvaluator {
 impl Evaluator for MatrixEvaluator {
     fn evaluate(&self, mut state: Array1<f64>) -> Array1<f64> {
         // performs evaluation by sequentially matrix multiplying and transforming the state with every stage
-        for (matrix, activations) in self.stages.iter().zip(self.transformations.iter()) {
-            state = state.dot(matrix);
+        for (stage_matrix, activations) in self.stages.iter().zip(self.transformations.iter()) {
+            state = state.dot(stage_matrix);
             for (value, activation) in state.iter_mut().zip(activations.iter()) {
                 *value = activation(*value);
             }

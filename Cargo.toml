@@ -8,3 +8,6 @@ edition = "2018"
 
 [dependencies]
 ndarray = "0.13"
+
+[features]
+blas = ["ndarray/blas"]
