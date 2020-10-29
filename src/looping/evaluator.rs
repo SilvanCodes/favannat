@@ -21,11 +21,11 @@ pub struct LoopingEvaluator {
     pub input_ids: Vec<usize>,
     pub output_ids: Vec<usize>,
     pub nodes: HashMap<usize, DependentNode>,
-    pub node_active_sum_map: ValueMap<f64>,
-    pub node_active_out_map: ValueMap<(f64, f64)>,
+    pub node_active_sum_map: Vec<f64>,
+    pub node_active_out_map: Vec<(f64, f64)>,
 }
 
-// TODO: rewrite ValueMap as Vec with id as
+// TODO: rewrite ValueMap as Vec with id as offset
 
 #[derive(Debug, Default)]
 pub struct ValueMap<T>(HashMap<usize, T>);
@@ -71,7 +71,7 @@ impl LoopingEvaluator {
 
 impl StatefulEvaluator for LoopingEvaluator {
     fn evaluate(&mut self, input: ndarray::Array1<f64>) -> ndarray::Array1<f64> {
-        for (id, &value) in self.input_ids.iter().zip(input.iter()) {
+        for (&id, &value) in self.input_ids.iter().zip(input.iter()) {
             self.node_active_out_map[id].1 = self.node_active_out_map[id].0;
             self.node_active_out_map[id].0 = value;
         }
@@ -79,8 +79,8 @@ impl StatefulEvaluator for LoopingEvaluator {
         let mut onetime = false;
 
         while self.outputs_off() || !onetime {
-            for (id, node) in self.nodes.iter_mut() {
-                if !self.input_ids.contains(id) {
+            for (&id, node) in self.nodes.iter_mut() {
+                if !self.input_ids.contains(&id) {
                     self.node_active_sum_map[id] = 0.0;
                     node.active_flag = false;
 
@@ -88,16 +88,16 @@ impl StatefulEvaluator for LoopingEvaluator {
                         node.active_flag = true;
                         if *recurrent {
                             self.node_active_sum_map[id] +=
-                                self.node_active_out_map[dep_id].1 * weight;
+                                self.node_active_out_map[*dep_id].1 * weight;
                         } else {
                             self.node_active_sum_map[id] +=
-                                self.node_active_out_map[dep_id].0 * weight;
+                                self.node_active_out_map[*dep_id].0 * weight;
                         }
                     }
                 }
             }
 
-            for (id, node) in self.nodes.iter().filter(|(_, n)| n.active_flag) {
+            for (&id, node) in self.nodes.iter().filter(|(_, n)| n.active_flag) {
                 self.node_active_out_map[id].1 = self.node_active_out_map[id].0;
                 self.node_active_out_map[id].0 =
                     (node.activation_function)(self.node_active_sum_map[id]);
@@ -108,15 +108,15 @@ impl StatefulEvaluator for LoopingEvaluator {
 
         self.output_ids
             .iter()
-            .map(|id| self.node_active_out_map[id].0)
+            .map(|&id| self.node_active_out_map[id].0)
             .collect::<Array1<f64>>()
     }
 
     fn reset_internal_state(&mut self) {
-        for value in self.node_active_sum_map.values_mut() {
+        for value in self.node_active_sum_map.iter_mut() {
             *value = 0.0;
         }
-        for value in self.node_active_out_map.values_mut() {
+        for value in self.node_active_out_map.iter_mut() {
             *value = (0.0, 0.0);
         }
     }

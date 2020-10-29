@@ -15,40 +15,56 @@ where
     type Output = super::evaluator::LoopingEvaluator;
 
     fn fabricate(net: &impl crate::network::Recurrent<N, E>) -> Result<Self::Output, &'static str> {
-        // TODO: map every node to custom id starting from zero too use them as
+        // TODO: map every node to custom id starting from zero too use them as indices
 
         let mut nodes: HashMap<usize, DependentNode> = HashMap::new();
-        let mut node_active_sum_map: ValueMap<f64> = Default::default();
-        let mut node_active_out_map: ValueMap<(f64, f64)> = Default::default();
+        // let mut node_active_sum_map: ValueMap<f64> = Default::default();
+        // let mut node_active_out_map: ValueMap<(f64, f64)> = Default::default();
+
+        let node_active_sum_map: Vec<f64> = vec![0.0; net.nodes().len()];
+        let node_active_out_map: Vec<(f64, f64)> = vec![(0.0, 0.0); net.nodes().len()];
+
+        let mut id_gen = 0_usize..;
+        let mut id_map: HashMap<usize, usize> = HashMap::new();
 
         for node in net.nodes() {
+            id_map.insert(node.id(), id_gen.next().unwrap());
+
             nodes.insert(
-                node.id(),
+                *id_map.get(&node.id()).unwrap(),
                 DependentNode {
                     activation_function: node.activation(),
                     inputs: Vec::new(),
                     active_flag: false,
                 },
             );
-            node_active_sum_map.insert(node.id(), 0.0);
-            node_active_out_map.insert(node.id(), (0.0, 0.0));
         }
 
         for edge in net.edges() {
-            if let Some(node) = nodes.get_mut(&edge.end()) {
-                node.inputs.push((edge.start(), edge.weight(), false))
+            if let Some(node) = nodes.get_mut(id_map.get(&edge.end()).unwrap()) {
+                node.inputs
+                    .push((*id_map.get(&edge.start()).unwrap(), edge.weight(), false))
             }
         }
 
         for edge in net.recurrent_edges() {
-            if let Some(node) = nodes.get_mut(&edge.end()) {
-                node.inputs.push((edge.start(), edge.weight(), true))
+            if let Some(node) = nodes.get_mut(id_map.get(&edge.end()).unwrap()) {
+                node.inputs
+                    .push((*id_map.get(&edge.start()).unwrap(), edge.weight(), true))
             }
         }
 
         Ok(LoopingEvaluator {
-            input_ids: net.inputs().iter().map(|i| i.id()).collect(),
-            output_ids: net.outputs().iter().map(|i| i.id()).collect(),
+            input_ids: net
+                .inputs()
+                .iter()
+                .map(|i| *id_map.get(&i.id()).unwrap())
+                .collect(),
+            output_ids: net
+                .outputs()
+                .iter()
+                .map(|i| *id_map.get(&i.id()).unwrap())
+                .collect(),
             nodes,
             node_active_sum_map,
             node_active_out_map,
@@ -430,13 +446,6 @@ mod tests {
             0--1.0->2,
             1--1.0->3
         );
-
-        // recurrent unrolled
-        // 0--1.0->6,
-        // 2--1.0->4,
-        //
-        // 1--1.0->7,
-        // 3--1.0->5
 
         let mut evaluator = LoopingFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
