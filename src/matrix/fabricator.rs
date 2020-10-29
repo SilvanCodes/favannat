@@ -1,52 +1,62 @@
 // external imports
-use ndarray::Array2;
 use ndarray::Array;
+use ndarray::Array2;
 // crate imports
-use crate::network::{EdgeLike, NodeLike, NetLike, Fabricator, StatefulFabricator, Recurrent};
+use crate::network::{EdgeLike, Fabricator, NetLike, NodeLike, Recurrent, StatefulFabricator};
 // std imports
 use std::collections::HashMap;
 
-pub struct MatrixFabricator;
+pub struct FeedForwardMatrixFabricator;
 
-pub struct StatefulMatrixFabricator;
+pub struct RecurrentMatrixFabricator;
 
-impl<N,E> StatefulFabricator<N, E> for StatefulMatrixFabricator
-    where N: NodeLike + std::fmt::Debug, E: EdgeLike + std::fmt::Debug
+impl<N, E> StatefulFabricator<N, E> for RecurrentMatrixFabricator
+where
+    N: NodeLike,
+    E: EdgeLike,
 {
-    type Output = super::evaluator::StatefulMatrixEvaluator;
+    type Output = super::evaluator::RecurrentMatrixEvaluator;
 
     fn fabricate(net: &impl Recurrent<N, E>) -> Result<Self::Output, &'static str> {
-        let evaluator = MatrixFabricator::fabricate(&net.unroll())?;
+        let unrolled = net.unroll();
+        let evaluator = FeedForwardMatrixFabricator::fabricate(&unrolled)?;
+        let memory = unrolled.outputs().len() - net.outputs().len();
 
-        Ok(super::evaluator::StatefulMatrixEvaluator {
-            internal: Array::zeros(net.memory()),
-            evaluator
+        assert!(unrolled.inputs().len() - net.inputs().len() == memory);
+
+        Ok(super::evaluator::RecurrentMatrixEvaluator {
+            internal: Array::zeros(memory),
+            evaluator,
         })
     }
 }
 
-impl MatrixFabricator {
+impl FeedForwardMatrixFabricator {
     fn get_arr2(mut dynamic_matrix: Vec<Vec<f64>>) -> Array2<f64> {
         let dim_x = dynamic_matrix.len();
         let dim_y = dynamic_matrix[0].len();
 
-        let flat_vec = dynamic_matrix
-            .iter_mut()
-            .fold(Vec::new(), |mut flat, col| { flat.append(col); flat });
+        let flat_vec = dynamic_matrix.iter_mut().fold(Vec::new(), |mut flat, col| {
+            flat.append(col);
+            flat
+        });
 
-        Array::from_shape_vec((dim_x, dim_y), flat_vec).unwrap().reversed_axes()
+        Array::from_shape_vec((dim_x, dim_y), flat_vec)
+            .unwrap()
+            .reversed_axes()
     }
 }
 
-
-impl<N, E> Fabricator<N, E> for MatrixFabricator
-    where N: NodeLike + std::fmt::Debug, E: EdgeLike + std::fmt::Debug
+impl<N, E> Fabricator<N, E> for FeedForwardMatrixFabricator
+where
+    N: NodeLike,
+    E: EdgeLike,
 {
     type Output = super::evaluator::MatrixEvaluator;
 
     fn fabricate(net: &impl NetLike<N, E>) -> Result<Self::Output, &'static str> {
         // build dependency graph by collecting incoming edges per node
-        let mut dependency_graph: HashMap<usize, Vec<&E>> = HashMap::new(); 
+        let mut dependency_graph: HashMap<usize, Vec<&E>> = HashMap::new();
 
         for edge in net.edges() {
             dependency_graph
@@ -70,11 +80,15 @@ impl<N, E> Fabricator<N, E> for MatrixFabricator
         let mut stage_transformations: Vec<crate::Transformations> = Vec::new();
         // set available nodes a.k.a net input
         let mut available_nodes: Vec<usize> = net.inputs().iter().map(|n| n.id()).collect();
+        // sort to guarantee each input will be processed by the same node every time
+        available_nodes.sort_unstable();
 
         // println!("available_nodes {:?}", available_nodes);
 
         // set wanted nodes a.k.a net output
-        let wanted_nodes: Vec<usize> = net.outputs().iter().map(|n| n.id()).collect();
+        let mut wanted_nodes: Vec<usize> = net.outputs().iter().map(|n| n.id()).collect();
+        wanted_nodes.sort_unstable();
+        let wanted_nodes = wanted_nodes;
 
         // println!("wanted_nodes {:?}", wanted_nodes);
 
@@ -118,7 +132,11 @@ impl<N, E> Fabricator<N, E> for MatrixFabricator
                     stage_matrix.push(compute_or_carry);
                     // add activation function to stage transformations
                     transformations.push(
-                        net.nodes().iter().find(|&node| node.id() == dependent_node).unwrap().activation()
+                        net.nodes()
+                            .iter()
+                            .find(|&node| node.id() == dependent_node)
+                            .unwrap()
+                            .activation(),
                     );
                     // mark node as available in next iteration
                     next_available_nodes.push(dependent_node);
@@ -126,7 +144,12 @@ impl<N, E> Fabricator<N, E> for MatrixFabricator
                     // figure out carries
                     for (index, &weight) in compute_or_carry.iter().enumerate() {
                         // if there is some partial dependency that is not carried yet
-                        if next_available_nodes.iter().find(|node| **node == available_nodes[index]).is_none() && !weight.is_nan() {
+                        if next_available_nodes
+                            .iter()
+                            .find(|node| **node == available_nodes[index])
+                            .is_none()
+                            && !weight.is_nan()
+                        {
                             let mut carry = vec![0.0; available_nodes.len()];
                             carry[index] = 1.0;
                             // add carry vector
@@ -145,7 +168,11 @@ impl<N, E> Fabricator<N, E> for MatrixFabricator
                 for (index, available_node) in available_nodes.iter().enumerate() {
                     if available_node == wanted_node {
                         // carry only if not carried already
-                        if next_available_nodes.iter().find(|node| **node == *available_node).is_none() {
+                        if next_available_nodes
+                            .iter()
+                            .find(|node| **node == *available_node)
+                            .is_none()
+                        {
                             let mut carry = vec![0.0; available_nodes.len()];
                             carry[index] = 1.0;
                             // add carry vector
@@ -177,7 +204,6 @@ impl<N, E> Fabricator<N, E> for MatrixFabricator
 
             // reorder last stage according to net output order (invalidates next_available_nodes order which wont be used after this point)
             if dependency_graph.is_empty() {
-
                 // println!("stage_matrix {:?}", stage_matrix);
 
                 let mut reordered_matrix = stage_matrix.clone();
@@ -185,7 +211,11 @@ impl<N, E> Fabricator<N, E> for MatrixFabricator
 
                 let mut matched_wanted_count = 0;
 
-                for ((available_node, column), transformation) in next_available_nodes.iter().zip(stage_matrix.into_iter()).zip(transformations.into_iter()) {
+                for ((available_node, column), transformation) in next_available_nodes
+                    .iter()
+                    .zip(stage_matrix.into_iter())
+                    .zip(transformations.into_iter())
+                {
                     for (index, wanted_node) in wanted_nodes.iter().enumerate() {
                         if available_node == wanted_node {
                             reordered_matrix[index] = column;
@@ -197,7 +227,9 @@ impl<N, E> Fabricator<N, E> for MatrixFabricator
                 }
 
                 if matched_wanted_count < wanted_nodes.len() {
-                    return Err("dependencies resolved but not all outputs computable, net invalid");
+                    return Err(
+                        "dependencies resolved but not all outputs computable, net invalid",
+                    );
                 }
 
                 // println!("reordered_matrix {:?}", reordered_matrix);
@@ -217,30 +249,45 @@ impl<N, E> Fabricator<N, E> for MatrixFabricator
         Ok(super::evaluator::MatrixEvaluator {
             stages: compute_stages
                 .into_iter()
-                .map(MatrixFabricator::get_arr2)
+                .map(FeedForwardMatrixFabricator::get_arr2)
                 .collect(),
-            transformations: stage_transformations
+            transformations: stage_transformations,
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{MatrixFabricator, StatefulMatrixFabricator};
-    use crate::network::{NetLike, NodeLike, EdgeLike, Fabricator, Evaluator, Recurrent, StatefulFabricator, StatefulEvaluator};
+    use super::{FeedForwardMatrixFabricator, RecurrentMatrixFabricator};
+    use crate::{
+        matrix::evaluator::SelfNormalizingMatrixEvaluator,
+        network::{
+            EdgeLike, Evaluator, Fabricator, NetLike, NodeLike, Recurrent, StatefulEvaluator,
+            StatefulFabricator,
+        },
+    };
     use ndarray::array;
 
     pub mod activations {
         pub const LINEAR: fn(f64) -> f64 = |val| val;
-        pub const SIGMOID: fn(f64) -> f64 = |val| 1.0 / (1.0 + (-1.0 * val).exp());
+        // pub const SIGMOID: fn(f64) -> f64 = |val| 1.0 / (1.0 + (-1.0 * val).exp());
+        pub const SIGMOID: fn(f64) -> f64 = |val| 1.0 / (1.0 + (-4.9 * val).exp());
         pub const TANH: fn(f64) -> f64 = |val| 2.0 * SIGMOID(2.0 * val) - 1.0;
-        pub const GAUSSIAN: fn(f64) -> f64 = |val| (val * val / -2.0).exp(); // a = 1, b = 0, c = 1
+        // a = 1, b = 0, c = 1
+        pub const GAUSSIAN: fn(f64) -> f64 = |val| (val * val / -2.0).exp();
+        // pub const STEP: fn(f64) -> f64 = |val| if val > 0.0 { 1.0 } else { 0.0 };
+        // pub const SINE: fn(f64) -> f64 = |val| (val * std::f64::consts::PI).sin();
+        // pub const COSINE: fn(f64) -> f64 = |val| (val * std::f64::consts::PI).cos();
+        pub const INVERSE: fn(f64) -> f64 = |val| -val;
+        // pub const ABSOLUTE: fn(f64) -> f64 = |val| val.abs();
+        pub const RELU: fn(f64) -> f64 = |val| 0f64.max(val);
+        pub const SQUARED: fn(f64) -> f64 = |val| val * val;
     }
 
     #[derive(Debug)]
     pub struct Node {
         id: usize,
-        activation: fn(f64) -> f64
+        activation: fn(f64) -> f64,
     }
 
     impl NodeLike for Node {
@@ -252,11 +299,31 @@ mod tests {
         }
     }
 
+    impl PartialEq for Node {
+        fn eq(&self, other: &Self) -> bool {
+            self.id() == other.id()
+        }
+    }
+
+    impl Eq for Node {}
+
+    impl PartialOrd for Node {
+        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    impl Ord for Node {
+        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+            self.id().cmp(&other.id())
+        }
+    }
+
     #[derive(Debug)]
     pub struct Edge {
         start: usize,
         end: usize,
-        weight: f64
+        weight: f64,
     }
 
     impl EdgeLike for Edge {
@@ -276,7 +343,7 @@ mod tests {
         inputs: usize,
         outputs: usize,
         nodes: Vec<Node>,
-        edges: Vec<Edge>
+        edges: Vec<Edge>,
     }
 
     impl NetLike<Node, Edge> for Net {
@@ -290,7 +357,10 @@ mod tests {
             self.nodes.iter().take(self.inputs).collect()
         }
         fn outputs(&self) -> Vec<&Node> {
-            self.nodes.iter().skip(self.nodes().len() - self.outputs).collect()
+            self.nodes
+                .iter()
+                .skip(self.nodes().len() - self.outputs)
+                .collect()
         }
     }
 
@@ -300,7 +370,7 @@ mod tests {
                 inputs,
                 outputs,
                 nodes,
-                edges
+                edges,
             }
         }
     }
@@ -325,7 +395,7 @@ mod tests {
         ( $( $activation:literal ),* ) => {
             {
             let mut nodes = Vec::new();
-    
+
             $(
                 nodes.push(
                     Node { id: nodes.len(), activation: match $activation {
@@ -333,11 +403,14 @@ mod tests {
                         's' => activations::SIGMOID,
                         't' => activations::TANH,
                         'g' => activations::GAUSSIAN,
+                        'r' => activations::RELU,
+                        'q' => activations::SQUARED,
+                        'i' => activations::INVERSE,
                         _ => activations::SIGMOID }
                     }
                 );
             )*
-    
+
             nodes
             }
         };
@@ -346,17 +419,12 @@ mod tests {
     // tests construction and evaluation of simplest network
     #[test]
     fn simple_net_evaluator_0() {
-        let some_net = Net::new(
-            1,
-            1,
-            nodes!('l','l'),
-            edges!(0--0.5->1)
-        );
+        let some_net = Net::new(1, 1, nodes!('l', 'l'), edges!(0--0.5->1));
 
-        let evaluator = MatrixFabricator::fabricate(&some_net).unwrap();
+        let evaluator = FeedForwardMatrixFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
-        let result =  evaluator.evaluate(array![5.0]);
+        let result = evaluator.evaluate(array![5.0]);
         // println!("result {:?}", result);
 
         assert_eq!(result, array![2.5]);
@@ -372,13 +440,13 @@ mod tests {
             edges!(
                 0--0.5->2,
                 1--0.5->2
-            )
+            ),
         );
 
-        let evaluator = MatrixFabricator::fabricate(&some_net).unwrap();
+        let evaluator = FeedForwardMatrixFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
-        let result =  evaluator.evaluate(array![5.0, 5.0]);
+        let result = evaluator.evaluate(array![5.0, 5.0]);
         // println!("result {:?}", result);
 
         assert_eq!(result, array![5.0]);
@@ -394,13 +462,13 @@ mod tests {
             edges!(
                 0--0.5->1,
                 1--0.5->2
-            )
+            ),
         );
 
-        let evaluator = MatrixFabricator::fabricate(&some_net).unwrap();
+        let evaluator = FeedForwardMatrixFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
-        let result =  evaluator.evaluate(array![5.0]);
+        let result = evaluator.evaluate(array![5.0]);
         // println!("result {:?}", result);
 
         assert_eq!(result, array![1.25]);
@@ -417,13 +485,13 @@ mod tests {
                 0--0.5->1,
                 1--0.5->2,
                 0--0.5->2
-            )
+            ),
         );
 
-        let evaluator = MatrixFabricator::fabricate(&some_net).unwrap();
+        let evaluator = FeedForwardMatrixFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
-        let result =  evaluator.evaluate(array![5.0]);
+        let result = evaluator.evaluate(array![5.0]);
         // println!("result {:?}", result);
 
         assert_eq!(result, array![3.75]);
@@ -441,13 +509,13 @@ mod tests {
                 1--0.5->2,
                 0--0.5->3,
                 0--0.5->2
-            )
+            ),
         );
 
-        let evaluator = MatrixFabricator::fabricate(&some_net).unwrap();
+        let evaluator = FeedForwardMatrixFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
-        let result =  evaluator.evaluate(array![5.0]);
+        let result = evaluator.evaluate(array![5.0]);
         // println!("result {:?}", result);
 
         assert_eq!(result, array![3.75, 2.5]);
@@ -464,13 +532,13 @@ mod tests {
                 0--0.5->1,
                 1--0.5->3,
                 0--0.5->2
-            )
+            ),
         );
 
-        let evaluator = MatrixFabricator::fabricate(&some_net).unwrap();
+        let evaluator = FeedForwardMatrixFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
-        let result =  evaluator.evaluate(array![5.0]);
+        let result = evaluator.evaluate(array![5.0]);
         // println!("result {:?}", result);
 
         assert_eq!(result, array![2.5, 1.25]);
@@ -479,54 +547,40 @@ mod tests {
     // test unconnected net
     #[test]
     fn simple_net_evaluator_6() {
-        let some_net = Net::new(
-            1,
-            1,
-            nodes!('l', 'l'),
-            Vec::new()
-        );
+        let some_net = Net::new(1, 1, nodes!('l', 'l'), Vec::new());
 
-        if let Err(message) = MatrixFabricator::fabricate(&some_net) {
+        if let Err(message) = FeedForwardMatrixFabricator::fabricate(&some_net) {
             assert_eq!(message, "no edges present, net invalid");
         } else {
-            assert!(false);
+            unreachable!();
         }
     }
 
     // test uncomputable output
     #[test]
     fn simple_net_evaluator_7() {
-        let some_net = Net::new(
-            1,
-            1,
-            nodes!('l', 'l', 'l'),
-            edges!(0--0.5->1)
-        );
+        let some_net = Net::new(1, 1, nodes!('l', 'l', 'l'), edges!(0--0.5->1));
 
-        if let Err(message) = MatrixFabricator::fabricate(&some_net) {
-            assert_eq!(message, "dependencies resolved but not all outputs computable, net invalid");
+        if let Err(message) = FeedForwardMatrixFabricator::fabricate(&some_net) {
+            assert_eq!(
+                message,
+                "dependencies resolved but not all outputs computable, net invalid"
+            );
         } else {
-            assert!(false);
+            unreachable!();
         }
-
     }
 
     // test uncomputable output
     #[test]
     fn simple_net_evaluator_8() {
-        let some_net = Net::new(
-            1,
-            1,
-            nodes!('l', 'l', 'l'),
-            edges!(1--0.5->2)
-        );
+        let some_net = Net::new(1, 1, nodes!('l', 'l', 'l'), edges!(1--0.5->2));
 
-        if let Err(message) = MatrixFabricator::fabricate(&some_net) {
+        if let Err(message) = FeedForwardMatrixFabricator::fabricate(&some_net) {
             assert_eq!(message, "can't resolve dependencies, net invalid");
         } else {
-            assert!(false);
+            unreachable!();
         }
-
     }
 
     #[test]
@@ -538,21 +592,44 @@ mod tests {
             edges!(
                 0--0.5->2,
                 1--0.0->2
-            )
+            ),
         );
 
-        let evaluator = MatrixFabricator::fabricate(&some_net).unwrap();
+        let evaluator = FeedForwardMatrixFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
-        let result =  evaluator.evaluate(array![5.0, 5.0]);
+        let result = evaluator.evaluate(array![5.0, 5.0]);
         // println!("result {:?}", result);
 
         assert_eq!(result, array![2.5]);
     }
 
     #[test]
-    fn stateful_net_evaluator_0() {
+    fn simple_net_evaluator_10() {
+        let some_net = Net::new(
+            2,
+            1,
+            nodes!('l', 'l', 'l'),
+            edges!(
+                0--0.5->2,
+                1--0.5->2
+            ),
+        );
 
+        let mut evaluator: SelfNormalizingMatrixEvaluator =
+            FeedForwardMatrixFabricator::fabricate(&some_net)
+                .unwrap()
+                .into();
+        // println!("stages {:?}", evaluator.stages);
+
+        dbg!(&evaluator);
+
+        assert_eq!(evaluator.evaluate(array![5.0, 5.0]), array![0.0]);
+        assert_eq!(evaluator.evaluate(array![2.5, 7.5]), array![0.0]);
+    }
+
+    #[test]
+    fn stateful_net_evaluator_0() {
         impl Recurrent<Node, Edge> for Net {
             type Net = Net;
 
@@ -572,17 +649,17 @@ mod tests {
 
                         1--1.0->7,
                         3--1.0->5
-                    )
+                    ),
                 )
             }
-            fn memory(&self) -> usize {
-                2
+            fn recurrent_edges(&self) -> Vec<&Edge> {
+                todo!()
             }
         }
 
-        let some_net = Net::new(0, 0, Vec::new(), Vec::new());
+        let some_net = Net::new(2, 2, nodes!('l', 'l', 'l', 'l'), Vec::new());
 
-        let mut evaluator = StatefulMatrixFabricator::fabricate(&some_net).unwrap();
+        let mut evaluator = RecurrentMatrixFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
         let result = evaluator.evaluate(array![5.0, 0.0]);
