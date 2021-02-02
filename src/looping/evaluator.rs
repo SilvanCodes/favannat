@@ -1,67 +1,27 @@
-use std::{
-    collections::HashMap,
-    ops::{Deref, DerefMut, Index, IndexMut},
-};
-
-use ndarray::Array1;
-
 use crate::network::StatefulEvaluator;
 
 #[derive(Debug)]
-
 pub struct DependentNode {
     pub activation_function: fn(f64) -> f64,
     pub inputs: Vec<(usize, f64, bool)>,
-    pub active_flag: bool,
+    // flag[0] is 'should compute', flag[1] is 'should propagate'
+    pub flags: [bool; 2],
 }
 
 #[derive(Debug)]
-
 pub struct LoopingEvaluator {
     pub input_ids: Vec<usize>,
     pub output_ids: Vec<usize>,
-    pub nodes: HashMap<usize, DependentNode>,
-    pub node_active_sum_map: Vec<f64>,
-    pub node_active_out_map: Vec<(f64, f64)>,
-}
-
-// TODO: rewrite ValueMap as Vec with id as offset
-
-#[derive(Debug, Default)]
-pub struct ValueMap<T>(HashMap<usize, T>);
-
-impl<T> Index<&usize> for ValueMap<T> {
-    type Output = T;
-
-    fn index(&self, index: &usize) -> &Self::Output {
-        &self.0[index]
-    }
-}
-
-impl<T> IndexMut<&usize> for ValueMap<T> {
-    fn index_mut(&mut self, index: &usize) -> &mut Self::Output {
-        self.0.get_mut(index).unwrap()
-    }
-}
-
-impl<T> Deref for ValueMap<T> {
-    type Target = HashMap<usize, T>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T> DerefMut for ValueMap<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
+    pub nodes: Vec<DependentNode>,
+    pub node_input_sum: Vec<f64>,
+    // [0] is current output, [1] it output before that
+    pub node_active_output: Vec<[f64; 2]>,
 }
 
 impl LoopingEvaluator {
     fn outputs_off(&self) -> bool {
-        for id in self.output_ids.iter() {
-            if !self.nodes[id].active_flag {
+        for &id in self.output_ids.iter() {
+            if !self.nodes[id].flags[1] {
                 return true;
             }
         }
@@ -72,52 +32,64 @@ impl LoopingEvaluator {
 impl StatefulEvaluator for LoopingEvaluator {
     fn evaluate(&mut self, input: ndarray::Array1<f64>) -> ndarray::Array1<f64> {
         for (&id, &value) in self.input_ids.iter().zip(input.iter()) {
-            self.node_active_out_map[id].1 = self.node_active_out_map[id].0;
-            self.node_active_out_map[id].0 = value;
+            self.node_active_output[id][0] = value;
+            self.nodes[id].flags[1] = true;
         }
 
-        let mut onetime = false;
-
-        while self.outputs_off() || !onetime {
-            for (&id, node) in self.nodes.iter_mut() {
+        while self.outputs_off() {
+            for id in 0..self.nodes.len() {
                 if !self.input_ids.contains(&id) {
-                    self.node_active_sum_map[id] = 0.0;
-                    node.active_flag = false;
+                    self.node_input_sum[id] = 0.0;
 
-                    for (dep_id, weight, recurrent) in node.inputs.iter() {
-                        node.active_flag = true;
-                        if *recurrent {
-                            self.node_active_sum_map[id] +=
-                                self.node_active_out_map[*dep_id].1 * weight;
-                        } else {
-                            self.node_active_sum_map[id] +=
-                                self.node_active_out_map[*dep_id].0 * weight;
+                    let inputs = self.nodes[id].inputs.clone();
+                    for &(dep_id, weight, recurrent) in inputs.iter() {
+                        if self.nodes[dep_id].flags[1] {
+                            self.nodes[id].flags[0] = true;
+                            if recurrent {
+                                self.node_input_sum[id] +=
+                                    self.node_active_output[dep_id][1] * weight;
+                            } else {
+                                self.node_input_sum[id] +=
+                                    self.node_active_output[dep_id][0] * weight;
+                            }
                         }
                     }
                 }
             }
 
-            for (&id, node) in self.nodes.iter().filter(|(_, n)| n.active_flag) {
-                self.node_active_out_map[id].1 = self.node_active_out_map[id].0;
-                self.node_active_out_map[id].0 =
-                    (node.activation_function)(self.node_active_sum_map[id]);
+            for id in 0..self.nodes.len() {
+                // shift last output in time
+                self.node_active_output[id][1] = self.node_active_output[id][0];
+                // compute new output when possible
+                if self.nodes[id].flags[0] {
+                    self.node_active_output[id][0] =
+                        (self.nodes[id].activation_function)(self.node_input_sum[id]);
+                    self.nodes[id].flags[0] = false;
+                    self.nodes[id].flags[1] = true;
+                }
+                // or write zero
+                else {
+                    self.node_active_output[id][0] = 0.0;
+                }
             }
-
-            onetime = true;
         }
 
-        self.output_ids
-            .iter()
-            .map(|&id| self.node_active_out_map[id].0)
-            .collect::<Array1<f64>>()
+        let mut output = Vec::new();
+
+        for &id in self.output_ids.iter() {
+            self.nodes[id].flags[1] = false;
+            output.push(self.node_active_output[id][0]);
+        }
+
+        output.into()
     }
 
     fn reset_internal_state(&mut self) {
-        for value in self.node_active_sum_map.iter_mut() {
+        for value in self.node_input_sum.iter_mut() {
             *value = 0.0;
         }
-        for value in self.node_active_out_map.iter_mut() {
-            *value = (0.0, 0.0);
+        for value in self.node_active_output.iter_mut() {
+            *value = [0.0; 2];
         }
     }
 }

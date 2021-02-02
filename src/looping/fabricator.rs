@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::network::{EdgeLike, NodeLike, StatefulFabricator};
 
-use super::evaluator::{DependentNode, LoopingEvaluator, ValueMap};
+use super::evaluator::{DependentNode, LoopingEvaluator};
 
 #[derive(Debug)]
 pub struct LoopingFabricator {}
@@ -15,14 +15,10 @@ where
     type Output = super::evaluator::LoopingEvaluator;
 
     fn fabricate(net: &impl crate::network::Recurrent<N, E>) -> Result<Self::Output, &'static str> {
-        // TODO: map every node to custom id starting from zero too use them as indices
+        let mut nodes: Vec<DependentNode> = Vec::new();
 
-        let mut nodes: HashMap<usize, DependentNode> = HashMap::new();
-        // let mut node_active_sum_map: ValueMap<f64> = Default::default();
-        // let mut node_active_out_map: ValueMap<(f64, f64)> = Default::default();
-
-        let node_active_sum_map: Vec<f64> = vec![0.0; net.nodes().len()];
-        let node_active_out_map: Vec<(f64, f64)> = vec![(0.0, 0.0); net.nodes().len()];
+        let node_input_sum: Vec<f64> = vec![0.0; net.nodes().len()];
+        let node_active_output: Vec<[f64; 2]> = vec![[0.0; 2]; net.nodes().len()];
 
         let mut id_gen = 0_usize..;
         let mut id_map: HashMap<usize, usize> = HashMap::new();
@@ -30,28 +26,27 @@ where
         for node in net.nodes() {
             id_map.insert(node.id(), id_gen.next().unwrap());
 
-            nodes.insert(
-                *id_map.get(&node.id()).unwrap(),
-                DependentNode {
-                    activation_function: node.activation(),
-                    inputs: Vec::new(),
-                    active_flag: false,
-                },
-            );
+            nodes.push(DependentNode {
+                activation_function: node.activation(),
+                inputs: Vec::new(),
+                flags: [false; 2],
+            });
         }
 
         for edge in net.edges() {
-            if let Some(node) = nodes.get_mut(id_map.get(&edge.end()).unwrap()) {
-                node.inputs
-                    .push((*id_map.get(&edge.start()).unwrap(), edge.weight(), false))
-            }
+            nodes[*id_map.get(&edge.end()).unwrap()].inputs.push((
+                *id_map.get(&edge.start()).unwrap(),
+                edge.weight(),
+                false,
+            ))
         }
 
         for edge in net.recurrent_edges() {
-            if let Some(node) = nodes.get_mut(id_map.get(&edge.end()).unwrap()) {
-                node.inputs
-                    .push((*id_map.get(&edge.start()).unwrap(), edge.weight(), true))
-            }
+            nodes[*id_map.get(&edge.end()).unwrap()].inputs.push((
+                *id_map.get(&edge.start()).unwrap(),
+                edge.weight(),
+                true,
+            ))
         }
 
         Ok(LoopingEvaluator {
@@ -66,8 +61,8 @@ where
                 .map(|i| *id_map.get(&i.id()).unwrap())
                 .collect(),
             nodes,
-            node_active_sum_map,
-            node_active_out_map,
+            node_input_sum,
+            node_active_output,
         })
     }
 }
@@ -82,18 +77,6 @@ mod tests {
 
     pub mod activations {
         pub const LINEAR: fn(f64) -> f64 = |val| val;
-        // pub const SIGMOID: fn(f64) -> f64 = |val| 1.0 / (1.0 + (-1.0 * val).exp());
-        pub const SIGMOID: fn(f64) -> f64 = |val| 1.0 / (1.0 + (-4.9 * val).exp());
-        pub const TANH: fn(f64) -> f64 = |val| 2.0 * SIGMOID(2.0 * val) - 1.0;
-        // a = 1, b = 0, c = 1
-        pub const GAUSSIAN: fn(f64) -> f64 = |val| (val * val / -2.0).exp();
-        // pub const STEP: fn(f64) -> f64 = |val| if val > 0.0 { 1.0 } else { 0.0 };
-        // pub const SINE: fn(f64) -> f64 = |val| (val * std::f64::consts::PI).sin();
-        // pub const COSINE: fn(f64) -> f64 = |val| (val * std::f64::consts::PI).cos();
-        pub const INVERSE: fn(f64) -> f64 = |val| -val;
-        // pub const ABSOLUTE: fn(f64) -> f64 = |val| val.abs();
-        pub const RELU: fn(f64) -> f64 = |val| 0f64.max(val);
-        pub const SQUARED: fn(f64) -> f64 = |val| val * val;
     }
 
     #[derive(Debug, Clone)]
@@ -225,14 +208,7 @@ mod tests {
             $(
                 nodes.push(
                     Node { id: nodes.len(), activation: match $activation {
-                        'l' => activations::LINEAR,
-                        's' => activations::SIGMOID,
-                        't' => activations::TANH,
-                        'g' => activations::GAUSSIAN,
-                        'r' => activations::RELU,
-                        'q' => activations::SQUARED,
-                        'i' => activations::INVERSE,
-                        _ => activations::SIGMOID }
+                        _ => activations::LINEAR }
                     }
                 );
             )*
@@ -320,36 +296,12 @@ mod tests {
         let result = evaluator.evaluate(array![5.0]);
         // println!("result {:?}", result);
 
-        assert_eq!(result, array![3.75]);
-    }
-
-    // test construction of carry for early result with dedup carry
-    #[test]
-    fn simple_net_evaluator_4() {
-        let some_net = Net::new(
-            1,
-            2,
-            nodes!('l', 'l', 'l', 'l'),
-            edges!(
-                0--0.5->1,
-                1--0.5->2,
-                0--0.5->3,
-                0--0.5->2
-            ),
-        );
-
-        let mut evaluator = LoopingFabricator::fabricate(&some_net).unwrap();
-        // println!("stages {:?}", evaluator.stages);
-
-        let result = evaluator.evaluate(array![5.0]);
-        // println!("result {:?}", result);
-
-        assert_eq!(result, array![3.75, 2.5]);
+        assert_eq!(result, array![2.5]);
     }
 
     // test construction of carry for early result flipped order
     #[test]
-    fn simple_net_evaluator_5() {
+    fn simple_net_evaluator_4() {
         let some_net = Net::new(
             1,
             2,
@@ -367,50 +319,11 @@ mod tests {
         let result = evaluator.evaluate(array![5.0]);
         // println!("result {:?}", result);
 
-        assert_eq!(result, array![2.5, 1.25]);
-    }
-
-    // test unconnected net
-    #[test]
-    fn simple_net_evaluator_6() {
-        let some_net = Net::new(1, 1, nodes!('l', 'l'), Vec::new());
-
-        if let Err(message) = LoopingFabricator::fabricate(&some_net) {
-            assert_eq!(message, "no edges present, net invalid");
-        } else {
-            unreachable!();
-        }
-    }
-
-    // test uncomputable output
-    #[test]
-    fn simple_net_evaluator_7() {
-        let some_net = Net::new(1, 1, nodes!('l', 'l', 'l'), edges!(0--0.5->1));
-
-        if let Err(message) = LoopingFabricator::fabricate(&some_net) {
-            assert_eq!(
-                message,
-                "dependencies resolved but not all outputs computable, net invalid"
-            );
-        } else {
-            unreachable!();
-        }
-    }
-
-    // test uncomputable output
-    #[test]
-    fn simple_net_evaluator_8() {
-        let some_net = Net::new(1, 1, nodes!('l', 'l', 'l'), edges!(1--0.5->2));
-
-        if let Err(message) = LoopingFabricator::fabricate(&some_net) {
-            assert_eq!(message, "can't resolve dependencies, net invalid");
-        } else {
-            unreachable!();
-        }
+        assert_eq!(result, array![0.0, 1.25]);
     }
 
     #[test]
-    fn simple_net_evaluator_9() {
+    fn simple_net_evaluator_5() {
         let some_net = Net::new(
             2,
             1,
