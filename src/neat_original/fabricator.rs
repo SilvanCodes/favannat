@@ -2,18 +2,17 @@ use std::collections::HashMap;
 
 use crate::network::{EdgeLike, NodeLike, StatefulFabricator};
 
-use super::evaluator::{DependentNode, LoopingEvaluator};
+use super::evaluator::{DependentNode, NeatOriginalEvaluator};
 
-#[deprecated(since = "0.1.1", note = "Please use NeatOriginalFabricator")]
 #[derive(Debug)]
-pub struct LoopingFabricator {}
+pub struct NeatOriginalFabricator {}
 
-impl<N, E> StatefulFabricator<N, E> for LoopingFabricator
+impl<N, E> StatefulFabricator<N, E> for NeatOriginalFabricator
 where
     N: NodeLike,
     E: EdgeLike,
 {
-    type Output = super::evaluator::LoopingEvaluator;
+    type Output = super::evaluator::NeatOriginalEvaluator;
 
     fn fabricate(net: &impl crate::network::Recurrent<N, E>) -> Result<Self::Output, &'static str> {
         let mut nodes: Vec<DependentNode> = Vec::new();
@@ -30,7 +29,7 @@ where
             nodes.push(DependentNode {
                 activation_function: node.activation(),
                 inputs: Vec::new(),
-                flags: [false; 2],
+                is_active: false,
             });
         }
 
@@ -50,7 +49,7 @@ where
             ))
         }
 
-        Ok(LoopingEvaluator {
+        Ok(NeatOriginalEvaluator {
             input_ids: net
                 .inputs()
                 .iter()
@@ -70,7 +69,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::LoopingFabricator;
+    use super::NeatOriginalFabricator;
     use crate::network::{
         EdgeLike, NetLike, NodeLike, Recurrent, StatefulEvaluator, StatefulFabricator,
     };
@@ -224,7 +223,7 @@ mod tests {
     fn simple_net_evaluator_0() {
         let some_net = Net::new(1, 1, nodes!('l', 'l'), edges!(0--0.5->1));
 
-        let mut evaluator = LoopingFabricator::fabricate(&some_net).unwrap();
+        let mut evaluator = NeatOriginalFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
         let result = evaluator.evaluate(array![5.0]);
@@ -246,7 +245,7 @@ mod tests {
             ),
         );
 
-        let mut evaluator = LoopingFabricator::fabricate(&some_net).unwrap();
+        let mut evaluator = NeatOriginalFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
         let result = evaluator.evaluate(array![5.0, 5.0]);
@@ -268,7 +267,7 @@ mod tests {
             ),
         );
 
-        let mut evaluator = LoopingFabricator::fabricate(&some_net).unwrap();
+        let mut evaluator = NeatOriginalFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
         let result = evaluator.evaluate(array![5.0]);
@@ -291,7 +290,7 @@ mod tests {
             ),
         );
 
-        let mut evaluator = LoopingFabricator::fabricate(&some_net).unwrap();
+        let mut evaluator = NeatOriginalFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
         let result = evaluator.evaluate(array![5.0]);
@@ -314,7 +313,7 @@ mod tests {
             ),
         );
 
-        let mut evaluator = LoopingFabricator::fabricate(&some_net).unwrap();
+        let mut evaluator = NeatOriginalFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
         let result = evaluator.evaluate(array![5.0]);
@@ -335,7 +334,7 @@ mod tests {
             ),
         );
 
-        let mut evaluator = LoopingFabricator::fabricate(&some_net).unwrap();
+        let mut evaluator = NeatOriginalFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
         let result = evaluator.evaluate(array![5.0, 5.0]);
@@ -361,7 +360,7 @@ mod tests {
             1--1.0->3
         );
 
-        let mut evaluator = LoopingFabricator::fabricate(&some_net).unwrap();
+        let mut evaluator = NeatOriginalFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
         let result = evaluator.evaluate(array![5.0, 0.0]);
