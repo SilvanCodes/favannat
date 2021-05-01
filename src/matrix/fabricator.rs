@@ -378,15 +378,11 @@ mod tests {
     macro_rules! edges {
         ( $( $start:literal -- $weight:literal -> $end:literal ),* ) => {
             {
-            let mut edges = Vec::new();
-
-            $(
-                edges.push(
-                    Edge { start: $start, end: $end, weight: $weight }
-                );
-            )*
-
-            edges
+                vec![
+                    $(
+                        Edge { start: $start, end: $end, weight: $weight },
+                    )*
+                ]
             }
         };
     }
