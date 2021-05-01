@@ -1,13 +1,18 @@
 [package]
 name = "favannat"
-version = "0.1.1"
-authors = ["Silvan Buedenbender <SilvanCodes@gmail.com>"]
+version = "0.1.2"
+authors = ["Silvan Buedenbender <silvancodes@gmail.com>"]
 edition = "2018"
+license = "MIT"
+description = "Algorithms to evaluate the function encoded in ANN-like structures."
+homepage = "https://github.com/SilvanCodes/favannat"
+documentation = "https://docs.rs/favannat"
+repository = "https://github.com/SilvanCodes/favannat"
+readme = "README.md"
+keywords = ["ann", "evolution"]
+categories = ["algorithms", "science", "mathematics"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ndarray = "0.13"
-
-[features]
-blas = ["ndarray/blas"]
+ndarray = "0.15"
