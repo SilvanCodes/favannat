@@ -193,8 +193,6 @@ where
 
             // if no dependency was removed no progess was made
             if dependency_graph.len() == dependency_count {
-                println!("faulty net {:?}", net);
-                println!("faulty dependency_graph {:#?}", dependency_graph);
                 return Err("can't resolve dependencies, net invalid");
             } else {
                 dependency_count = dependency_graph.len();

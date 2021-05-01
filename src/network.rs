@@ -1,18 +1,17 @@
 use ndarray::Array1;
-use std::fmt::Debug;
 
-pub trait NodeLike: Debug + Ord {
+pub trait NodeLike: Ord {
     fn id(&self) -> usize;
     fn activation(&self) -> fn(f64) -> f64;
 }
 
-pub trait EdgeLike: Debug {
+pub trait EdgeLike {
     fn start(&self) -> usize;
     fn end(&self) -> usize;
     fn weight(&self) -> f64;
 }
 
-pub trait NetLike<N: NodeLike, E: EdgeLike>: Debug {
+pub trait NetLike<N: NodeLike, E: EdgeLike> {
     fn nodes(&self) -> Vec<&N>;
     fn edges(&self) -> Vec<&E>;
     fn inputs(&self) -> Vec<&N>;
