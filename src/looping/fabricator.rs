@@ -4,7 +4,10 @@ use crate::network::{EdgeLike, NodeLike, StatefulFabricator};
 
 use super::evaluator::{DependentNode, LoopingEvaluator};
 
-#[deprecated(since = "0.1.1", note = "Please use NeatOriginalFabricator")]
+#[deprecated(
+    since = "0.1.1",
+    note = "Please use NeatOriginalFabricator, which this LoopingFabricator was intended to be."
+)]
 #[derive(Debug)]
 pub struct LoopingFabricator {}
 
