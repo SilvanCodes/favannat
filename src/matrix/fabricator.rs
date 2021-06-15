@@ -2,7 +2,9 @@
 use ndarray::Array;
 use ndarray::Array2;
 // crate imports
-use crate::network::{EdgeLike, Fabricator, NetLike, NodeLike, Recurrent, StatefulFabricator};
+use crate::network::{
+    net::unroll, EdgeLike, Fabricator, NetLike, NodeLike, Recurrent, StatefulFabricator,
+};
 // std imports
 use std::collections::HashMap;
 
@@ -18,15 +20,16 @@ where
     type Output = super::evaluator::RecurrentMatrixEvaluator;
 
     fn fabricate(net: &impl Recurrent<N, E>) -> Result<Self::Output, &'static str> {
-        let unrolled = net.unroll();
+        let unrolled = unroll(net);
         let evaluator = FeedForwardMatrixFabricator::fabricate(&unrolled)?;
-        let memory = unrolled.outputs().len() - net.outputs().len();
+        let memory = unrolled.outputs().len();
 
         assert!(unrolled.inputs().len() - net.inputs().len() == memory);
 
         Ok(super::evaluator::RecurrentMatrixEvaluator {
             internal: Array::zeros(memory),
             evaluator,
+            outputs: net.outputs().len(),
         })
     }
 }
@@ -87,6 +90,7 @@ where
 
         // set wanted nodes a.k.a net output
         let mut wanted_nodes: Vec<usize> = net.outputs().iter().map(|n| n.id()).collect();
+        // sort to guarantee each output will appear in the same order every time
         wanted_nodes.sort_unstable();
         let wanted_nodes = wanted_nodes;
 
@@ -258,157 +262,12 @@ where
 mod tests {
     use super::{FeedForwardMatrixFabricator, RecurrentMatrixFabricator};
     use crate::{
+        edges,
         matrix::evaluator::SelfNormalizingMatrixEvaluator,
-        network::{
-            EdgeLike, Evaluator, Fabricator, NetLike, NodeLike, Recurrent, StatefulEvaluator,
-            StatefulFabricator,
-        },
+        network::{net::Net, Evaluator, Fabricator, StatefulEvaluator, StatefulFabricator},
+        nodes,
     };
     use ndarray::array;
-
-    pub mod activations {
-        pub const LINEAR: fn(f64) -> f64 = |val| val;
-        // pub const SIGMOID: fn(f64) -> f64 = |val| 1.0 / (1.0 + (-1.0 * val).exp());
-        pub const SIGMOID: fn(f64) -> f64 = |val| 1.0 / (1.0 + (-4.9 * val).exp());
-        pub const TANH: fn(f64) -> f64 = |val| 2.0 * SIGMOID(2.0 * val) - 1.0;
-        // a = 1, b = 0, c = 1
-        pub const GAUSSIAN: fn(f64) -> f64 = |val| (val * val / -2.0).exp();
-        // pub const STEP: fn(f64) -> f64 = |val| if val > 0.0 { 1.0 } else { 0.0 };
-        // pub const SINE: fn(f64) -> f64 = |val| (val * std::f64::consts::PI).sin();
-        // pub const COSINE: fn(f64) -> f64 = |val| (val * std::f64::consts::PI).cos();
-        pub const INVERSE: fn(f64) -> f64 = |val| -val;
-        // pub const ABSOLUTE: fn(f64) -> f64 = |val| val.abs();
-        pub const RELU: fn(f64) -> f64 = |val| 0f64.max(val);
-        pub const SQUARED: fn(f64) -> f64 = |val| val * val;
-    }
-
-    #[derive(Debug)]
-    pub struct Node {
-        id: usize,
-        activation: fn(f64) -> f64,
-    }
-
-    impl NodeLike for Node {
-        fn id(&self) -> usize {
-            self.id
-        }
-        fn activation(&self) -> fn(f64) -> f64 {
-            self.activation
-        }
-    }
-
-    impl PartialEq for Node {
-        fn eq(&self, other: &Self) -> bool {
-            self.id() == other.id()
-        }
-    }
-
-    impl Eq for Node {}
-
-    impl PartialOrd for Node {
-        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-            Some(self.cmp(other))
-        }
-    }
-
-    impl Ord for Node {
-        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-            self.id().cmp(&other.id())
-        }
-    }
-
-    #[derive(Debug)]
-    pub struct Edge {
-        start: usize,
-        end: usize,
-        weight: f64,
-    }
-
-    impl EdgeLike for Edge {
-        fn start(&self) -> usize {
-            self.start
-        }
-        fn end(&self) -> usize {
-            self.end
-        }
-        fn weight(&self) -> f64 {
-            self.weight
-        }
-    }
-
-    #[derive(Debug)]
-    pub struct Net {
-        inputs: usize,
-        outputs: usize,
-        nodes: Vec<Node>,
-        edges: Vec<Edge>,
-    }
-
-    impl NetLike<Node, Edge> for Net {
-        fn nodes(&self) -> Vec<&Node> {
-            self.nodes.iter().collect()
-        }
-        fn edges(&self) -> Vec<&Edge> {
-            self.edges.iter().collect()
-        }
-        fn inputs(&self) -> Vec<&Node> {
-            self.nodes.iter().take(self.inputs).collect()
-        }
-        fn outputs(&self) -> Vec<&Node> {
-            self.nodes
-                .iter()
-                .skip(self.nodes().len() - self.outputs)
-                .collect()
-        }
-    }
-
-    impl Net {
-        pub fn new(inputs: usize, outputs: usize, nodes: Vec<Node>, edges: Vec<Edge>) -> Self {
-            Net {
-                inputs,
-                outputs,
-                nodes,
-                edges,
-            }
-        }
-    }
-
-    macro_rules! edges {
-        ( $( $start:literal -- $weight:literal -> $end:literal ),* ) => {
-            {
-                vec![
-                    $(
-                        Edge { start: $start, end: $end, weight: $weight },
-                    )*
-                ]
-            }
-        };
-    }
-
-    macro_rules! nodes {
-        ( $( $activation:literal ),* ) => {
-            {
-            let mut nodes = Vec::new();
-
-            $(
-                nodes.push(
-                    Node { id: nodes.len(), activation: match $activation {
-                        'l' => activations::LINEAR,
-                        's' => activations::SIGMOID,
-                        't' => activations::TANH,
-                        'g' => activations::GAUSSIAN,
-                        'r' => activations::RELU,
-                        'q' => activations::SQUARED,
-                        'i' => activations::INVERSE,
-                        _ => activations::SIGMOID }
-                    }
-                );
-            )*
-
-            nodes
-            }
-        };
-    }
 
     // tests construction and evaluation of simplest network
     #[test]
@@ -624,37 +483,22 @@ mod tests {
 
     #[test]
     fn stateful_net_evaluator_0() {
-        impl Recurrent<Node, Edge> for Net {
-            type Net = Net;
+        let mut some_net = Net::new(
+            2,
+            2,
+            nodes!('l', 'l', 'l', 'l'),
+            edges!(
+                0--1.0->2,
+                1--1.0->3
+            ),
+        );
 
-            fn unroll(&self) -> Self::Net {
-                Net::new(
-                    4,
-                    4,
-                    nodes!('l', 'l', 'l', 'l', 'l', 'l', 'l', 'l'),
-                    edges!(
-                        // standard feed-forward
-                        0--1.0->4,
-                        1--1.0->5,
-
-                        // recurrent unrolled
-                        0--1.0->6,
-                        2--1.0->4,
-
-                        1--1.0->7,
-                        3--1.0->5
-                    ),
-                )
-            }
-            fn recurrent_edges(&self) -> Vec<&Edge> {
-                todo!()
-            }
-        }
-
-        let some_net = Net::new(2, 2, nodes!('l', 'l', 'l', 'l'), Vec::new());
-
+        some_net.set_recurrent_edges(edges!(
+            0--1.0->2,
+            1--1.0->3
+        ));
         let mut evaluator = RecurrentMatrixFabricator::fabricate(&some_net).unwrap();
-        // println!("stages {:?}", evaluator.stages);
+        // println!("stages {:?}", evaluator);
 
         let result = evaluator.evaluate(array![5.0, 0.0]);
         assert_eq!(result, array![5.0, 0.0]);

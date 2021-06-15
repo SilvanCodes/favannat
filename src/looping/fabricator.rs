@@ -156,6 +156,13 @@ mod tests {
         fn inputs(&self) -> Vec<&Node> {
             self.nodes.iter().take(self.inputs).collect()
         }
+        fn hidden(&self) -> Vec<&Node> {
+            self.nodes
+                .iter()
+                .skip(self.inputs)
+                .take(self.nodes.len() - self.inputs - self.outputs)
+                .collect()
+        }
         fn outputs(&self) -> Vec<&Node> {
             self.nodes
                 .iter()
@@ -165,12 +172,6 @@ mod tests {
     }
 
     impl Recurrent<Node, Edge> for Net {
-        type Net = Self;
-
-        fn unroll(&self) -> Self::Net {
-            self.clone()
-        }
-
         fn recurrent_edges(&self) -> Vec<&Edge> {
             self.recurrent_edges.iter().collect()
         }

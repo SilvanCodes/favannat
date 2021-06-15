@@ -1,7 +1,7 @@
 use std::iter::once;
 
 use crate::network::{Evaluator, StatefulEvaluator};
-use ndarray::{Array, Array1, Array2, Axis};
+use ndarray::{s, Array, Array1, Array2, Axis};
 
 #[derive(Debug)]
 pub struct MatrixEvaluator {
@@ -26,17 +26,14 @@ impl Evaluator for MatrixEvaluator {
 pub struct RecurrentMatrixEvaluator {
     pub internal: Array1<f64>,
     pub evaluator: MatrixEvaluator,
+    pub outputs: usize,
 }
 
 impl StatefulEvaluator for RecurrentMatrixEvaluator {
     fn evaluate(&mut self, mut input: Array1<f64>) -> Array1<f64> {
         input = input.iter().chain(self.internal.iter()).cloned().collect();
-        let output = self.evaluator.evaluate(input);
-        let (output, internal) = output
-            .view()
-            .split_at(Axis(0), output.len() - self.internal.len());
-        self.internal = internal.to_owned();
-        output.to_owned()
+        self.internal = self.evaluator.evaluate(input);
+        self.internal.slice(s![0..self.outputs]).to_owned()
     }
 
     fn reset_internal_state(&mut self) {
