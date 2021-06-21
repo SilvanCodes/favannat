@@ -16,3 +16,4 @@ categories = ["algorithms", "science", "mathematics"]
 
 [dependencies]
 ndarray = "0.15"
+sprs = { git = "https://github.com/vbarrielle/sprs", branch = "master" }
