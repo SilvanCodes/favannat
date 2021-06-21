@@ -1,6 +1,5 @@
 // external imports
 use ndarray::Array;
-use ndarray::Array2;
 use sprs::CsMat;
 use sprs::TriMat;
 // crate imports
