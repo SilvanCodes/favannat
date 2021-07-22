@@ -1,4 +1,4 @@
-use ndarray::Array1;
+use nalgebra::DMatrix;
 
 use crate::network::StatefulEvaluator;
 
@@ -31,7 +31,7 @@ impl NeatOriginalEvaluator {
 }
 
 impl StatefulEvaluator for NeatOriginalEvaluator {
-    fn evaluate(&mut self, input: ndarray::Array1<f64>) -> ndarray::Array1<f64> {
+    fn evaluate(&mut self, input: DMatrix<f64>) -> DMatrix<f64> {
         for (&id, &value) in self.input_ids.iter().zip(input.iter()) {
             self.node_active_output[id][0] = value;
             self.nodes[id].is_active = true;
@@ -72,10 +72,13 @@ impl StatefulEvaluator for NeatOriginalEvaluator {
             onetime = true;
         }
 
-        self.output_ids
-            .iter()
-            .map(|&id| self.node_active_output[id][0])
-            .collect::<Array1<f64>>()
+        DMatrix::from_iterator(
+            1,
+            self.output_ids.len(),
+            self.output_ids
+                .iter()
+                .map(|&id| self.node_active_output[id][0]), // .collect::<Vec<_>>(),
+        )
     }
 
     fn reset_internal_state(&mut self) {

@@ -1,8 +1,6 @@
-// external imports
-use ndarray::Array;
-use sprs::CsMat;
-use sprs::TriMat;
-// crate imports
+use nalgebra::DMatrix;
+use nalgebra_sparse::{CooMatrix, CscMatrix};
+
 use crate::network::{
     net::unroll, EdgeLike, Fabricator, NetLike, NodeLike, Recurrent, StatefulFabricator,
 };
@@ -28,7 +26,7 @@ where
         assert!(unrolled.inputs().len() - net.inputs().len() == memory);
 
         Ok(super::evaluator::RecurrentMatrixEvaluator {
-            internal: Array::zeros(memory),
+            internal: DMatrix::from_element(1, memory, 0.0),
             evaluator,
             outputs: net.outputs().len(),
         })
@@ -36,11 +34,15 @@ where
 }
 
 impl FeedForwardSparseMatrixFabricator {
-    fn get_sparse((col_inds, row_inds, data): (Vec<usize>, Vec<usize>, Vec<f64>)) -> CsMat<f64> {
+    fn get_sparse(
+        (col_inds, row_inds, data): (Vec<usize>, Vec<usize>, Vec<f64>),
+    ) -> CscMatrix<f64> {
         let colums = col_inds.iter().max().unwrap() + 1;
         let rows = row_inds.iter().max().unwrap() + 1;
 
-        TriMat::from_triplets((rows, colums), row_inds, col_inds, data).to_csr()
+        CscMatrix::from(
+            &CooMatrix::try_from_triplets(rows, colums, row_inds, col_inds, data).unwrap(),
+        )
     }
 }
 
@@ -260,13 +262,14 @@ where
 
 #[cfg(test)]
 mod tests {
+    use nalgebra::dmatrix;
+
     use super::{FeedForwardSparseMatrixFabricator, RecurrentSparseMatrixFabricator};
     use crate::{
         edges,
         network::{net::Net, Evaluator, Fabricator, StatefulEvaluator, StatefulFabricator},
         nodes,
     };
-    use ndarray::array;
 
     // tests construction and evaluation of simplest network
     #[test]
@@ -276,10 +279,10 @@ mod tests {
         let evaluator = FeedForwardSparseMatrixFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
-        let result = evaluator.evaluate(array![5.0]);
+        let result = evaluator.evaluate(dmatrix![5.0]);
         // println!("result {:?}", result);
 
-        assert_eq!(result, array![2.5]);
+        assert_eq!(result, dmatrix![2.5]);
     }
 
     // tests input dimension > 1
@@ -298,10 +301,10 @@ mod tests {
         let evaluator = FeedForwardSparseMatrixFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
-        let result = evaluator.evaluate(array![5.0, 5.0]);
+        let result = evaluator.evaluate(dmatrix![5.0, 5.0]);
         // println!("result {:?}", result);
 
-        assert_eq!(result, array![5.0]);
+        assert_eq!(result, dmatrix![5.0]);
     }
 
     // test linear chaining of edges
@@ -320,10 +323,10 @@ mod tests {
         let evaluator = FeedForwardSparseMatrixFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
-        let result = evaluator.evaluate(array![5.0]);
+        let result = evaluator.evaluate(dmatrix![5.0]);
         // println!("result {:?}", result);
 
-        assert_eq!(result, array![1.25]);
+        assert_eq!(result, dmatrix![1.25]);
     }
 
     // test construction of carry for later needs
@@ -343,10 +346,10 @@ mod tests {
         let evaluator = FeedForwardSparseMatrixFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
-        let result = evaluator.evaluate(array![5.0]);
+        let result = evaluator.evaluate(dmatrix![5.0]);
         // println!("result {:?}", result);
 
-        assert_eq!(result, array![3.75]);
+        assert_eq!(result, dmatrix![3.75]);
     }
 
     // test construction of carry for early result with dedup carry
@@ -367,10 +370,10 @@ mod tests {
         let evaluator = FeedForwardSparseMatrixFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
-        let result = evaluator.evaluate(array![5.0]);
+        let result = evaluator.evaluate(dmatrix![5.0]);
         // println!("result {:?}", result);
 
-        assert_eq!(result, array![3.75, 2.5]);
+        assert_eq!(result, dmatrix![3.75, 2.5]);
     }
 
     // test construction of carry for early result flipped order
@@ -388,12 +391,12 @@ mod tests {
         );
 
         let evaluator = FeedForwardSparseMatrixFabricator::fabricate(&some_net).unwrap();
-        // println!("stages {:?}", evaluator.stages);
+        // dbg!(&evaluator.stages);
 
-        let result = evaluator.evaluate(array![5.0]);
+        let result = evaluator.evaluate(dmatrix![5.0]);
         // println!("result {:?}", result);
 
-        assert_eq!(result, array![2.5, 1.25]);
+        assert_eq!(result, dmatrix![2.5, 1.25]);
     }
 
     // test unconnected net
@@ -450,10 +453,10 @@ mod tests {
         let evaluator = FeedForwardSparseMatrixFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
-        let result = evaluator.evaluate(array![5.0, 5.0]);
+        let result = evaluator.evaluate(dmatrix![5.0, 5.0]);
         // println!("result {:?}", result);
 
-        assert_eq!(result, array![2.5]);
+        assert_eq!(result, dmatrix![2.5]);
     }
 
     #[test]
@@ -475,16 +478,16 @@ mod tests {
         let mut evaluator = RecurrentSparseMatrixFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator);
 
-        let result = evaluator.evaluate(array![5.0, 0.0]);
-        assert_eq!(result, array![5.0, 0.0]);
+        let result = evaluator.evaluate(dmatrix![5.0, 0.0]);
+        assert_eq!(result, dmatrix![5.0, 0.0]);
 
-        let result = evaluator.evaluate(array![5.0, 5.0]);
-        assert_eq!(result, array![10.0, 5.0]);
+        let result = evaluator.evaluate(dmatrix![5.0, 5.0]);
+        assert_eq!(result, dmatrix![10.0, 5.0]);
 
-        let result = evaluator.evaluate(array![0.0, 5.0]);
-        assert_eq!(result, array![5.0, 10.0]);
+        let result = evaluator.evaluate(dmatrix![0.0, 5.0]);
+        assert_eq!(result, dmatrix![5.0, 10.0]);
 
-        let result = evaluator.evaluate(array![0.0, 0.0]);
-        assert_eq!(result, array![0.0, 5.0]);
+        let result = evaluator.evaluate(dmatrix![0.0, 0.0]);
+        assert_eq!(result, dmatrix![0.0, 5.0]);
     }
 }

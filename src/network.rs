@@ -1,4 +1,4 @@
-use ndarray::Array1;
+use nalgebra::DMatrix;
 
 pub trait NodeLike: Ord {
     fn id(&self) -> usize;
@@ -31,11 +31,11 @@ pub trait Recurrent<N: NodeLike, E: EdgeLike>: NetLike<N, E> {
 }
 
 pub trait Evaluator {
-    fn evaluate(&self, input: Array1<f64>) -> Array1<f64>;
+    fn evaluate(&self, input: DMatrix<f64>) -> DMatrix<f64>;
 }
 
 pub trait StatefulEvaluator {
-    fn evaluate(&mut self, input: Array1<f64>) -> Array1<f64>;
+    fn evaluate(&mut self, input: DMatrix<f64>) -> DMatrix<f64>;
     fn reset_internal_state(&mut self);
 }
 

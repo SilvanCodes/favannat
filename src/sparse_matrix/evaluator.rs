@@ -1,42 +1,74 @@
+use nalgebra::DMatrix;
+use nalgebra_sparse::{CscMatrix, SparseEntry, SparseEntryMut};
+
 use crate::network::{Evaluator, StatefulEvaluator};
-use ndarray::{s, Array, Array1, Axis};
-use sprs::CsMat;
 
 #[derive(Debug)]
 pub struct SparseMatrixEvaluator {
-    pub stages: Vec<CsMat<f64>>,
+    pub stages: Vec<CscMatrix<f64>>,
     pub transformations: Vec<crate::Transformations>,
 }
 
 impl Evaluator for SparseMatrixEvaluator {
-    fn evaluate(&self, state: Array1<f64>) -> Array1<f64> {
-        let mut state = state.insert_axis(Axis(0));
+    fn evaluate(&self, state: DMatrix<f64>) -> DMatrix<f64> {
+        let mut len = 0;
+        let mut state: CscMatrix<f64> = (&state).into();
         // performs evaluation by sequentially matrix multiplying and transforming the state with every stage
         for (stage_matrix, transformations) in self.stages.iter().zip(&self.transformations) {
-            state = (state).dot(stage_matrix);
-            for (value, activation) in state.iter_mut().zip(transformations) {
-                *value = activation(*value);
+            len = transformations.len();
+            state = state * stage_matrix;
+            for (index, activation) in transformations.iter().enumerate() {
+                if let SparseEntryMut::NonZero(value) = state.index_entry_mut(0, index) {
+                    *value = activation(*value);
+                }
             }
+            // for (value, activation) in state.iter_mut().zip(transformations) {
+            //     *value = activation(*value);
+            // }
         }
-        state.remove_axis(Axis(0))
+        DMatrix::from_iterator(
+            1,
+            len,
+            (0..len).map(|index| {
+                if let SparseEntry::NonZero(value) = state.index_entry(0, index) {
+                    *value
+                } else {
+                    0.0
+                }
+            }),
+        )
+        // state.into()
     }
 }
 
 #[derive(Debug)]
 pub struct RecurrentMatrixEvaluator {
-    pub internal: Array1<f64>,
+    pub internal: DMatrix<f64>,
     pub evaluator: SparseMatrixEvaluator,
     pub outputs: usize,
 }
 
 impl StatefulEvaluator for RecurrentMatrixEvaluator {
-    fn evaluate(&mut self, mut input: Array1<f64>) -> Array1<f64> {
-        input = input.iter().chain(self.internal.iter()).cloned().collect();
+    fn evaluate(&mut self, mut input: DMatrix<f64>) -> DMatrix<f64> {
+        input = DMatrix::from_iterator(
+            1,
+            input.len() + self.internal.len(),
+            input.iter().chain(self.internal.iter()).cloned(),
+        );
+
         self.internal = self.evaluator.evaluate(input);
-        self.internal.slice(s![0..self.outputs]).to_owned()
+
+        DMatrix::from_iterator(
+            1,
+            self.outputs,
+            self.internal
+                .slice((0, 0), (1, self.outputs))
+                .iter()
+                .cloned(),
+        )
     }
 
     fn reset_internal_state(&mut self) {
-        self.internal = Array::zeros(self.internal.len());
+        self.internal = DMatrix::from_element(1, self.internal.len(), 0.0);
     }
 }
