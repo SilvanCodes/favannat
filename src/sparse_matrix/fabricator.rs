@@ -246,10 +246,7 @@ where
             // set available nodes for next iteration
             available_nodes = next_available_nodes;
         }
-        // compute_stages
-        // .into_iter()
-        // .map(FeedForwardSparseMatrixFabricator::get_sparse)
-        // .collect()
+
         Ok(super::evaluator::SparseMatrixEvaluator {
             stages: compute_stages
                 .into_iter()
@@ -391,10 +388,8 @@ mod tests {
         );
 
         let evaluator = FeedForwardSparseMatrixFabricator::fabricate(&some_net).unwrap();
-        // dbg!(&evaluator.stages);
 
         let result = evaluator.evaluate(dmatrix![5.0]);
-        // println!("result {:?}", result);
 
         assert_eq!(result, dmatrix![2.5, 1.25]);
     }

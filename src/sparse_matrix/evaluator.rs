@@ -22,9 +22,6 @@ impl Evaluator for SparseMatrixEvaluator {
                     *value = activation(*value);
                 }
             }
-            // for (value, activation) in state.iter_mut().zip(transformations) {
-            //     *value = activation(*value);
-            // }
         }
         DMatrix::from_iterator(
             1,
@@ -37,7 +34,6 @@ impl Evaluator for SparseMatrixEvaluator {
                 }
             }),
         )
-        // state.into()
     }
 }
 
