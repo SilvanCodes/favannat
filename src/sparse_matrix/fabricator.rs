@@ -60,8 +60,8 @@ where
         for edge in net.edges() {
             dependency_graph
                 .entry(edge.end())
-                .and_modify(|dependencies| dependencies.push(&edge))
-                .or_insert_with(|| vec![&edge]);
+                .and_modify(|dependencies| dependencies.push(edge))
+                .or_insert_with(|| vec![edge]);
         }
 
         if dependency_graph.is_empty() {
@@ -167,7 +167,7 @@ where
                 for (row_index, available_node) in available_nodes.iter().enumerate() {
                     if available_node == wanted_node {
                         // carry only if not carried already
-                        if !next_available_nodes.contains(&available_node) {
+                        if !next_available_nodes.contains(available_node) {
                             stage_column_indices.push(column_index);
                             column_index += 1;
                             stage_row_indices.push(row_index);

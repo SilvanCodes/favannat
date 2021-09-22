@@ -34,7 +34,7 @@ impl FeedForwardMatrixFabricator {
     fn get_matrix(dynamic_matrix: Vec<Vec<f64>>) -> DMatrix<f64> {
         let columns = dynamic_matrix
             .into_iter()
-            .map(|vec| DVector::from_vec(vec))
+            .map(DVector::from_vec)
             .collect::<Vec<_>>();
 
         DMatrix::from_columns(&columns)
@@ -55,8 +55,8 @@ where
         for edge in net.edges() {
             dependency_graph
                 .entry(edge.end())
-                .and_modify(|dependencies| dependencies.push(&edge))
-                .or_insert_with(|| vec![&edge]);
+                .and_modify(|dependencies| dependencies.push(edge))
+                .or_insert_with(|| vec![edge]);
         }
 
         if dependency_graph.is_empty() {
@@ -139,10 +139,9 @@ where
                     // figure out carries
                     for (index, &weight) in compute_or_carry.iter().enumerate() {
                         // if there is some partial dependency that is not carried yet
-                        if next_available_nodes
+                        if !next_available_nodes
                             .iter()
-                            .find(|node| **node == available_nodes[index])
-                            .is_none()
+                            .any(|node| *node == available_nodes[index])
                             && !weight.is_nan()
                         {
                             let mut carry = vec![0.0; available_nodes.len()];
@@ -163,10 +162,9 @@ where
                 for (index, available_node) in available_nodes.iter().enumerate() {
                     if available_node == wanted_node {
                         // carry only if not carried already
-                        if next_available_nodes
+                        if !next_available_nodes
                             .iter()
-                            .find(|node| **node == *available_node)
-                            .is_none()
+                            .any(|node| *node == *available_node)
                         {
                             let mut carry = vec![0.0; available_nodes.len()];
                             carry[index] = 1.0;

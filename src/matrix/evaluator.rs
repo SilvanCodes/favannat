@@ -12,12 +12,12 @@ impl Evaluator for MatrixEvaluator {
     fn evaluate(&self, mut state: DMatrix<f64>) -> DMatrix<f64> {
         // performs evaluation by sequentially matrix multiplying and transforming the state with every stage
         for (stage_matrix, transformations) in self.stages.iter().zip(&self.transformations) {
-            state = state * stage_matrix;
+            state *= stage_matrix;
             for (value, activation) in state.iter_mut().zip(transformations) {
                 *value = activation(*value);
             }
         }
-        state.into()
+        state
     }
 }
 
