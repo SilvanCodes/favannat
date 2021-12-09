@@ -1,36 +1,10 @@
-use crate::network::{
-    net::unroll, EdgeLike, Fabricator, NetworkLike, NodeLike, Recurrent, StatefulFabricator,
-};
+use crate::network::{EdgeLike, Fabricator, NetworkLike, NodeLike};
 use nalgebra::{DMatrix, DVector};
 use std::collections::HashMap;
 
-pub struct FeedForwardMatrixFabricator;
+pub struct MatrixFeedForwardFabricator;
 
-pub struct RecurrentMatrixFabricator;
-
-impl<N, E> StatefulFabricator<N, E> for RecurrentMatrixFabricator
-where
-    N: NodeLike,
-    E: EdgeLike,
-{
-    type Output = super::evaluator::RecurrentMatrixEvaluator;
-
-    fn fabricate(net: &impl Recurrent<N, E>) -> Result<Self::Output, &'static str> {
-        let unrolled = unroll(net);
-        let evaluator = FeedForwardMatrixFabricator::fabricate(&unrolled)?;
-        let memory = unrolled.outputs().len();
-
-        assert!(unrolled.inputs().len() - net.inputs().len() == memory);
-
-        Ok(super::evaluator::RecurrentMatrixEvaluator {
-            internal: DMatrix::from_element(1, memory, 0.0),
-            evaluator,
-            outputs: net.outputs().len(),
-        })
-    }
-}
-
-impl FeedForwardMatrixFabricator {
+impl MatrixFeedForwardFabricator {
     fn get_matrix(dynamic_matrix: Vec<Vec<f64>>) -> DMatrix<f64> {
         let columns = dynamic_matrix
             .into_iter()
@@ -41,12 +15,12 @@ impl FeedForwardMatrixFabricator {
     }
 }
 
-impl<N, E> Fabricator<N, E> for FeedForwardMatrixFabricator
+impl<N, E> Fabricator<N, E> for MatrixFeedForwardFabricator
 where
     N: NodeLike,
     E: EdgeLike,
 {
-    type Output = super::evaluator::MatrixEvaluator;
+    type Output = super::evaluator::MatrixFeedforwardEvaluator;
 
     fn fabricate(net: &impl NetworkLike<N, E>) -> Result<Self::Output, &'static str> {
         // build dependency graph by collecting incoming edges per node
@@ -237,10 +211,10 @@ where
             available_nodes = next_available_nodes;
         }
 
-        Ok(super::evaluator::MatrixEvaluator {
+        Ok(super::evaluator::MatrixFeedforwardEvaluator {
             stages: compute_stages
                 .into_iter()
-                .map(FeedForwardMatrixFabricator::get_matrix)
+                .map(MatrixFeedForwardFabricator::get_matrix)
                 .collect(),
             transformations: stage_transformations,
         })
@@ -251,10 +225,10 @@ where
 mod tests {
     use nalgebra::dmatrix;
 
-    use super::{FeedForwardMatrixFabricator, RecurrentMatrixFabricator};
+    use super::MatrixFeedForwardFabricator;
     use crate::{
         edges,
-        network::{net::Net, Evaluator, Fabricator, StatefulEvaluator, StatefulFabricator},
+        network::{net::Net, Evaluator, Fabricator},
         nodes,
     };
 
@@ -263,7 +237,7 @@ mod tests {
     fn simple_net_evaluator_0() {
         let some_net = Net::new(1, 1, nodes!('l', 'l'), edges!(0--0.5->1));
 
-        let evaluator = FeedForwardMatrixFabricator::fabricate(&some_net).unwrap();
+        let evaluator = MatrixFeedForwardFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
         let result = evaluator.evaluate(dmatrix![5.0]);
@@ -285,7 +259,7 @@ mod tests {
             ),
         );
 
-        let evaluator = FeedForwardMatrixFabricator::fabricate(&some_net).unwrap();
+        let evaluator = MatrixFeedForwardFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
         let result = evaluator.evaluate(dmatrix![5.0, 5.0]);
@@ -307,7 +281,7 @@ mod tests {
             ),
         );
 
-        let evaluator = FeedForwardMatrixFabricator::fabricate(&some_net).unwrap();
+        let evaluator = MatrixFeedForwardFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
         let result = evaluator.evaluate(dmatrix![5.0]);
@@ -330,7 +304,7 @@ mod tests {
             ),
         );
 
-        let evaluator = FeedForwardMatrixFabricator::fabricate(&some_net).unwrap();
+        let evaluator = MatrixFeedForwardFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
         let result = evaluator.evaluate(dmatrix![5.0]);
@@ -354,7 +328,7 @@ mod tests {
             ),
         );
 
-        let evaluator = FeedForwardMatrixFabricator::fabricate(&some_net).unwrap();
+        let evaluator = MatrixFeedForwardFabricator::fabricate(&some_net).unwrap();
 
         let result = evaluator.evaluate(dmatrix![5.0]);
 
@@ -375,7 +349,7 @@ mod tests {
             ),
         );
 
-        let evaluator = FeedForwardMatrixFabricator::fabricate(&some_net).unwrap();
+        let evaluator = MatrixFeedForwardFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
         let result = evaluator.evaluate(dmatrix![5.0]);
@@ -389,7 +363,7 @@ mod tests {
     fn simple_net_evaluator_6() {
         let some_net = Net::new(1, 1, nodes!('l', 'l'), Vec::new());
 
-        if let Err(message) = FeedForwardMatrixFabricator::fabricate(&some_net) {
+        if let Err(message) = MatrixFeedForwardFabricator::fabricate(&some_net) {
             assert_eq!(message, "no edges present, net invalid");
         } else {
             unreachable!();
@@ -401,7 +375,7 @@ mod tests {
     fn simple_net_evaluator_7() {
         let some_net = Net::new(1, 1, nodes!('l', 'l', 'l'), edges!(0--0.5->1));
 
-        if let Err(message) = FeedForwardMatrixFabricator::fabricate(&some_net) {
+        if let Err(message) = MatrixFeedForwardFabricator::fabricate(&some_net) {
             assert_eq!(
                 message,
                 "dependencies resolved but not all outputs computable, net invalid"
@@ -416,7 +390,7 @@ mod tests {
     fn simple_net_evaluator_8() {
         let some_net = Net::new(1, 1, nodes!('l', 'l', 'l'), edges!(1--0.5->2));
 
-        if let Err(message) = FeedForwardMatrixFabricator::fabricate(&some_net) {
+        if let Err(message) = MatrixFeedForwardFabricator::fabricate(&some_net) {
             assert_eq!(message, "can't resolve dependencies, net invalid");
         } else {
             unreachable!();
@@ -435,43 +409,12 @@ mod tests {
             ),
         );
 
-        let evaluator = FeedForwardMatrixFabricator::fabricate(&some_net).unwrap();
+        let evaluator = MatrixFeedForwardFabricator::fabricate(&some_net).unwrap();
         // println!("stages {:?}", evaluator.stages);
 
         let result = evaluator.evaluate(dmatrix![5.0, 5.0]);
         // println!("result {:?}", result);
 
         assert_eq!(result, dmatrix![2.5]);
-    }
-
-    #[test]
-    fn stateful_net_evaluator_0() {
-        let mut some_net = Net::new(
-            2,
-            2,
-            nodes!('l', 'l', 'l', 'l'),
-            edges!(
-                0--1.0->2,
-                1--1.0->3
-            ),
-        );
-
-        some_net.set_recurrent_edges(edges!(
-            0--1.0->2,
-            1--1.0->3
-        ));
-        let mut evaluator = RecurrentMatrixFabricator::fabricate(&some_net).unwrap();
-
-        let result = evaluator.evaluate(dmatrix![5.0, 0.0]);
-        assert_eq!(result, dmatrix![5.0, 0.0]);
-
-        let result = evaluator.evaluate(dmatrix![5.0, 5.0]);
-        assert_eq!(result, dmatrix![10.0, 5.0]);
-
-        let result = evaluator.evaluate(dmatrix![0.0, 5.0]);
-        assert_eq!(result, dmatrix![5.0, 10.0]);
-
-        let result = evaluator.evaluate(dmatrix![0.0, 0.0]);
-        assert_eq!(result, dmatrix![0.0, 5.0]);
     }
 }

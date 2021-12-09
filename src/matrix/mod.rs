@@ -1,2 +1,2 @@
-pub mod fabricator;
-pub mod evaluator;
+pub mod feedforward;
+pub mod recurrent;
