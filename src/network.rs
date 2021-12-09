@@ -1,16 +1,31 @@
+//! Defines vocabulary and interfaces for this crate.
+
 use nalgebra::DMatrix;
 
+/// Declares a structure to have [`NodeLike`] properties.
+///
+/// [`NodeLike`] provides the plumbing to accept user-defined structures and use them as nodes in this crates context.
+/// The implemntation of [`NodeLike::id`] needs to provide a unique identifier per node.
 pub trait NodeLike: Ord {
     fn id(&self) -> usize;
     fn activation(&self) -> fn(f64) -> f64;
 }
 
+/// Declares a structure to have [`EdgeLike`] properties.
+///
+/// [`EdgeLike`] provides the plumbing to accept user-defined structures and use them as edges in this crates context.
 pub trait EdgeLike {
     fn start(&self) -> usize;
     fn end(&self) -> usize;
     fn weight(&self) -> f64;
 }
 
+/// Declares a structure to have network-like properties.
+///
+/// `NetworkLike` sits at the core of this crate.
+/// Together with [`NodeLike`] and [`EdgeLike`] it provides the interface to start using this crate.
+/// Structures that are `NetworkLike` can be fabricated and evaluated by the different implementations of the
+/// [`Fabricator`], [`Evaluator`], [`StatefulFabricator`] and [`StatefulEvaluator`] traits.
 pub trait NetworkLike<N: NodeLike, E: EdgeLike> {
     fn edges(&self) -> Vec<&E>;
     fn inputs(&self) -> Vec<&N>;
@@ -26,31 +41,46 @@ pub trait NetworkLike<N: NodeLike, E: EdgeLike> {
     }
 }
 
+/// Declares a [`NetworkLike`] structure to have recurrent edges.
+///
+/// Recurrent edges act like memory cells in a network.
+/// They imply that internal state has to be preserved.
 pub trait Recurrent<N: NodeLike, E: EdgeLike>: NetworkLike<N, E> {
     fn recurrent_edges(&self) -> Vec<&E>;
 }
 
+/// A facade behind which evaluation of a fabricated [`NetworkLike`] structure is implemented.
 pub trait Evaluator {
     fn evaluate(&self, input: DMatrix<f64>) -> DMatrix<f64>;
 }
 
+/// A facade behind which evaluation of a fabricated [`Recurrent`] [`NetworkLike`] structure is implemented.
+///
+/// Due to its statefulness it needs mutable access and provides a way to reset the internal state.
 pub trait StatefulEvaluator {
     fn evaluate(&mut self, input: DMatrix<f64>) -> DMatrix<f64>;
     fn reset_internal_state(&mut self);
 }
 
+/// A facade behind which the fabrication of a [`NetworkLike`] structure is implemented.
+///
+/// Fabrication means transforming a description of a network, the [`NetworkLike`] structure, into an executable form of its encoded function, an [`Evaluator`].
 pub trait Fabricator<N: NodeLike, E: EdgeLike> {
     type Output: Evaluator;
 
     fn fabricate(net: &impl NetworkLike<N, E>) -> Result<Self::Output, &'static str>;
 }
 
+/// A facade behind which the fabrication of a [`Recurrent`] [`NetworkLike`] structure is implemented.
+///
+/// Fabrication means transforming a description of a network, the [`Recurrent`] [`NetworkLike`] structure, into an executable form of its encoded function, a [`StatefulEvaluator`].
 pub trait StatefulFabricator<N: NodeLike, E: EdgeLike> {
     type Output: StatefulEvaluator;
 
     fn fabricate(net: &impl Recurrent<N, E>) -> Result<Self::Output, &'static str>;
 }
 
+/// Contains an example of a [`Recurrent`] [`NetworkLike`] structure.
 pub mod net {
     use std::{collections::HashMap, ops::Shr};
 
@@ -122,6 +152,7 @@ pub mod net {
         }
     }
 
+    /// [`Net`] is an example of a [`Recurrent`] [`NetworkLike`] structure and also used as an intermediate representation to perform the [`unroll`] operation on [`Recurrent`] [`NetworkLike`] structures.
     #[derive(Debug)]
     pub struct Net {
         inputs: usize,
@@ -179,6 +210,10 @@ pub mod net {
         }
     }
 
+    /// unroll is an essential operation in order to evaluate [`Recurrent`] [`NetworkLike`] structures.
+    ///
+    /// It restructures the edges and nodes to be evaluatable in a feedforward manner.
+    /// The evaluation further depends on the implementations in [`crate::matrix::recurrent::evaluator`] and [`crate::sparse_matrix::recurrent::evaluator`] which handle the internal state.
     pub fn unroll<R: Recurrent<N, E>, N: NodeLike, E: EdgeLike>(recurrent: &R) -> Net {
         let mut known_inputs = recurrent
             .inputs()
