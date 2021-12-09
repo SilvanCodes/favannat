@@ -11,7 +11,7 @@ pub trait EdgeLike {
     fn weight(&self) -> f64;
 }
 
-pub trait NetLike<N: NodeLike, E: EdgeLike> {
+pub trait NetworkLike<N: NodeLike, E: EdgeLike> {
     fn edges(&self) -> Vec<&E>;
     fn inputs(&self) -> Vec<&N>;
     fn hidden(&self) -> Vec<&N>;
@@ -26,7 +26,7 @@ pub trait NetLike<N: NodeLike, E: EdgeLike> {
     }
 }
 
-pub trait Recurrent<N: NodeLike, E: EdgeLike>: NetLike<N, E> {
+pub trait Recurrent<N: NodeLike, E: EdgeLike>: NetworkLike<N, E> {
     fn recurrent_edges(&self) -> Vec<&E>;
 }
 
@@ -42,7 +42,7 @@ pub trait StatefulEvaluator {
 pub trait Fabricator<N: NodeLike, E: EdgeLike> {
     type Output: Evaluator;
 
-    fn fabricate(net: &impl NetLike<N, E>) -> Result<Self::Output, &'static str>;
+    fn fabricate(net: &impl NetworkLike<N, E>) -> Result<Self::Output, &'static str>;
 }
 
 pub trait StatefulFabricator<N: NodeLike, E: EdgeLike> {
@@ -54,7 +54,7 @@ pub trait StatefulFabricator<N: NodeLike, E: EdgeLike> {
 pub mod net {
     use std::{collections::HashMap, ops::Shr};
 
-    use super::{EdgeLike, NetLike, NodeLike, Recurrent};
+    use super::{EdgeLike, NetworkLike, NodeLike, Recurrent};
 
     #[derive(Debug)]
     pub struct Node {
@@ -131,7 +131,7 @@ pub mod net {
         recurrent_edges: Vec<Edge>,
     }
 
-    impl NetLike<Node, Edge> for Net {
+    impl NetworkLike<Node, Edge> for Net {
         fn edges(&self) -> Vec<&Edge> {
             self.edges.iter().collect()
         }

@@ -1,5 +1,5 @@
 use crate::network::{
-    net::unroll, EdgeLike, Fabricator, NetLike, NodeLike, Recurrent, StatefulFabricator,
+    net::unroll, EdgeLike, Fabricator, NetworkLike, NodeLike, Recurrent, StatefulFabricator,
 };
 use nalgebra::{DMatrix, DVector};
 use std::collections::HashMap;
@@ -48,7 +48,7 @@ where
 {
     type Output = super::evaluator::MatrixEvaluator;
 
-    fn fabricate(net: &impl NetLike<N, E>) -> Result<Self::Output, &'static str> {
+    fn fabricate(net: &impl NetworkLike<N, E>) -> Result<Self::Output, &'static str> {
         // build dependency graph by collecting incoming edges per node
         let mut dependency_graph: HashMap<usize, Vec<&E>> = HashMap::new();
 
