@@ -1,15 +1,15 @@
 use nalgebra::DMatrix;
 use nalgebra_sparse::{CscMatrix, SparseEntry, SparseEntryMut};
 
-use crate::network::{Evaluator, StatefulEvaluator};
+use crate::network::Evaluator;
 
 #[derive(Debug)]
-pub struct SparseMatrixEvaluator {
+pub struct SparseMatrixFeedforwardEvaluator {
     pub stages: Vec<CscMatrix<f64>>,
     pub transformations: Vec<crate::Transformations>,
 }
 
-impl Evaluator for SparseMatrixEvaluator {
+impl Evaluator for SparseMatrixFeedforwardEvaluator {
     fn evaluate(&self, state: DMatrix<f64>) -> DMatrix<f64> {
         let mut len = 0;
         let mut state: CscMatrix<f64> = (&state).into();
@@ -34,37 +34,5 @@ impl Evaluator for SparseMatrixEvaluator {
                 }
             }),
         )
-    }
-}
-
-#[derive(Debug)]
-pub struct RecurrentMatrixEvaluator {
-    pub internal: DMatrix<f64>,
-    pub evaluator: SparseMatrixEvaluator,
-    pub outputs: usize,
-}
-
-impl StatefulEvaluator for RecurrentMatrixEvaluator {
-    fn evaluate(&mut self, mut input: DMatrix<f64>) -> DMatrix<f64> {
-        input = DMatrix::from_iterator(
-            1,
-            input.len() + self.internal.len(),
-            input.iter().chain(self.internal.iter()).cloned(),
-        );
-
-        self.internal = self.evaluator.evaluate(input);
-
-        DMatrix::from_iterator(
-            1,
-            self.outputs,
-            self.internal
-                .slice((0, 0), (1, self.outputs))
-                .iter()
-                .cloned(),
-        )
-    }
-
-    fn reset_internal_state(&mut self) {
-        self.internal = DMatrix::from_element(1, self.internal.len(), 0.0);
     }
 }
