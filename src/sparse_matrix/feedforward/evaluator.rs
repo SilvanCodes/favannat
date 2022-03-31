@@ -1,7 +1,7 @@
 use nalgebra::DMatrix;
 use nalgebra_sparse::{CscMatrix, SparseEntry, SparseEntryMut};
 
-use crate::network::Evaluator;
+use crate::network::{Evaluator, NetworkIO};
 
 #[derive(Debug)]
 pub struct SparseMatrixFeedforwardEvaluator {
@@ -10,7 +10,8 @@ pub struct SparseMatrixFeedforwardEvaluator {
 }
 
 impl Evaluator for SparseMatrixFeedforwardEvaluator {
-    fn evaluate(&self, state: DMatrix<f64>) -> DMatrix<f64> {
+    fn evaluate<T: NetworkIO>(&self, state: T) -> T {
+        let state = NetworkIO::input(state);
         let mut len = 0;
         let mut state: CscMatrix<f64> = (&state).into();
         // performs evaluation by sequentially matrix multiplying and transforming the state with every stage
@@ -23,7 +24,7 @@ impl Evaluator for SparseMatrixFeedforwardEvaluator {
                 }
             }
         }
-        DMatrix::from_iterator(
+        NetworkIO::output(DMatrix::from_iterator(
             1,
             len,
             (0..len).map(|index| {
@@ -33,6 +34,6 @@ impl Evaluator for SparseMatrixFeedforwardEvaluator {
                     0.0
                 }
             }),
-        )
+        ))
     }
 }

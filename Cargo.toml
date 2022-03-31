@@ -17,3 +17,4 @@ categories = ["algorithms", "science", "mathematics"]
 [dependencies]
 nalgebra = "0.28.0"
 nalgebra-sparse = "0.4"
+ndarray = { version = "0.15", optional = true }

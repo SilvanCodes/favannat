@@ -1,3 +1,11 @@
+//! This crate allows to evaluate anything that implements the [`network::NetworkLike`] trait.
+//!
+//! See [`network::net`] for an examplatory implementation.
+//!
+//! Networks accept any value that implements the [`network::io::NetworkIO`] trait.
+//!
+//! The feature `ndarray` implements `NetworkIO` from `ndarray::Array1` when enabled.
+
 pub mod matrix;
 pub mod neat_original;
 pub mod network;

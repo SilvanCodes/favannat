@@ -2,6 +2,10 @@
 
 use nalgebra::DMatrix;
 
+pub use self::io::NetworkIO;
+
+mod io;
+
 /// Declares a structure to have [`NodeLike`] properties.
 ///
 /// [`NodeLike`] provides the plumbing to accept user-defined structures and use them as nodes in this crates context.
@@ -51,7 +55,7 @@ pub trait Recurrent<N: NodeLike, E: EdgeLike>: NetworkLike<N, E> {
 
 /// A facade behind which evaluation of a fabricated [`NetworkLike`] structure is implemented.
 pub trait Evaluator {
-    fn evaluate(&self, input: DMatrix<f64>) -> DMatrix<f64>;
+    fn evaluate<T: NetworkIO>(&self, input: T) -> T;
 }
 
 /// A facade behind which evaluation of a fabricated [`Recurrent`] [`NetworkLike`] structure is implemented.

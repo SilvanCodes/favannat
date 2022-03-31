@@ -1,6 +1,6 @@
 use nalgebra::DMatrix;
 
-use crate::network::Evaluator;
+use crate::network::{Evaluator, NetworkIO};
 
 #[derive(Debug)]
 pub struct MatrixFeedforwardEvaluator {
@@ -9,7 +9,8 @@ pub struct MatrixFeedforwardEvaluator {
 }
 
 impl Evaluator for MatrixFeedforwardEvaluator {
-    fn evaluate(&self, mut state: DMatrix<f64>) -> DMatrix<f64> {
+    fn evaluate<T: NetworkIO>(&self, state: T) -> T {
+        let mut state = NetworkIO::input(state);
         // performs evaluation by sequentially matrix multiplying and transforming the state with every stage
         for (stage_matrix, transformations) in self.stages.iter().zip(&self.transformations) {
             state *= stage_matrix;
@@ -17,6 +18,6 @@ impl Evaluator for MatrixFeedforwardEvaluator {
                 *value = activation(*value);
             }
         }
-        state
+        NetworkIO::output(state)
     }
 }
