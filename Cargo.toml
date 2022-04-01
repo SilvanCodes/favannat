@@ -1,6 +1,6 @@
 [package]
 name = "favannat"
-version = "0.5.0"
+version = "0.5.1"
 authors = ["Silvan Buedenbender <silvancodes@gmail.com>"]
 edition = "2018"
 license = "MIT"
