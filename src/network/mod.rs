@@ -1,7 +1,5 @@
 //! Defines vocabulary and interfaces for this crate.
 
-use nalgebra::DMatrix;
-
 pub use self::io::NetworkIO;
 
 mod io;
@@ -62,7 +60,7 @@ pub trait Evaluator {
 ///
 /// Due to its statefulness it needs mutable access and provides a way to reset the internal state.
 pub trait StatefulEvaluator {
-    fn evaluate(&mut self, input: DMatrix<f64>) -> DMatrix<f64>;
+    fn evaluate<T: NetworkIO>(&mut self, input: T) -> T;
     fn reset_internal_state(&mut self);
 }
 

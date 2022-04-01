@@ -1,6 +1,6 @@
 use nalgebra::DMatrix;
 
-use crate::network::StatefulEvaluator;
+use crate::network::{NetworkIO, StatefulEvaluator};
 
 #[derive(Debug)]
 pub struct DependentNode {
@@ -31,7 +31,9 @@ impl NeatOriginalEvaluator {
 }
 
 impl StatefulEvaluator for NeatOriginalEvaluator {
-    fn evaluate(&mut self, input: DMatrix<f64>) -> DMatrix<f64> {
+    fn evaluate<T: NetworkIO>(&mut self, input: T) -> T {
+        let input = NetworkIO::input(input);
+
         for (&id, &value) in self.input_ids.iter().zip(input.iter()) {
             self.node_active_output[id][0] = value;
             self.nodes[id].is_active = true;
@@ -72,13 +74,13 @@ impl StatefulEvaluator for NeatOriginalEvaluator {
             onetime = true;
         }
 
-        DMatrix::from_iterator(
+        NetworkIO::output(DMatrix::from_iterator(
             1,
             self.output_ids.len(),
             self.output_ids
                 .iter()
                 .map(|&id| self.node_active_output[id][0]), // .collect::<Vec<_>>(),
-        )
+        ))
     }
 
     fn reset_internal_state(&mut self) {

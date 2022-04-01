@@ -1,7 +1,7 @@
 use nalgebra::DMatrix;
 
 use crate::{
-    network::{Evaluator, StatefulEvaluator},
+    network::{Evaluator, NetworkIO, StatefulEvaluator},
     sparse_matrix::feedforward::evaluator::SparseMatrixFeedforwardEvaluator,
 };
 
@@ -13,7 +13,8 @@ pub struct RecurrentMatrixEvaluator {
 }
 
 impl StatefulEvaluator for RecurrentMatrixEvaluator {
-    fn evaluate(&mut self, mut input: DMatrix<f64>) -> DMatrix<f64> {
+    fn evaluate<T: NetworkIO>(&mut self, input: T) -> T {
+        let mut input = NetworkIO::input(input);
         input = DMatrix::from_iterator(
             1,
             input.len() + self.internal.len(),
@@ -22,14 +23,14 @@ impl StatefulEvaluator for RecurrentMatrixEvaluator {
 
         self.internal = self.evaluator.evaluate(input);
 
-        DMatrix::from_iterator(
+        NetworkIO::output(DMatrix::from_iterator(
             1,
             self.outputs,
             self.internal
                 .slice((0, 0), (1, self.outputs))
                 .iter()
                 .cloned(),
-        )
+        ))
     }
 
     fn reset_internal_state(&mut self) {
