@@ -2,7 +2,7 @@
 //!
 //! See [`network::net`] for an examplatory implementation.
 //!
-//! Networks accept any value that implements the [`network::io::NetworkIO`] trait.
+//! Networks accept any value that implements the [`network::NetworkIO`] trait.
 //!
 //! The feature `ndarray` implements `NetworkIO` from `ndarray::Array1` when enabled.
 

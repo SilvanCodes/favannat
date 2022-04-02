@@ -1,5 +1,6 @@
 use nalgebra::{DMatrix, DVector};
 
+/// Data structures implementing this trait can be used as input and output of networks.
 pub trait NetworkIO {
     fn input(input: Self) -> DMatrix<f64>;
     fn output(output: DMatrix<f64>) -> Self;
