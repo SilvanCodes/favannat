@@ -6,13 +6,13 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct RecurrentMatrixEvaluator {
+pub struct SparseMatrixRecurrentEvaluator {
     pub internal: DMatrix<f64>,
     pub evaluator: SparseMatrixFeedforwardEvaluator,
     pub outputs: usize,
 }
 
-impl StatefulEvaluator for RecurrentMatrixEvaluator {
+impl StatefulEvaluator for SparseMatrixRecurrentEvaluator {
     fn evaluate<T: NetworkIO>(&mut self, input: T) -> T {
         let mut input = NetworkIO::input(input);
         input = DMatrix::from_iterator(

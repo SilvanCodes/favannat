@@ -1,7 +1,7 @@
 use nalgebra::DMatrix;
 
 use crate::{
-    matrix::feedforward::fabricator::MatrixFeedForwardFabricator,
+    matrix::feedforward::fabricator::MatrixFeedforwardFabricator,
     network::{
         net::unroll, EdgeLike, Fabricator, NetworkLike, NodeLike, Recurrent, StatefulFabricator,
     },
@@ -20,7 +20,7 @@ where
 
     fn fabricate(net: &impl Recurrent<N, E>) -> Result<Self::Output, &'static str> {
         let unrolled = unroll(net);
-        let evaluator = MatrixFeedForwardFabricator::fabricate(&unrolled)?;
+        let evaluator = MatrixFeedforwardFabricator::fabricate(&unrolled)?;
         let memory = unrolled.outputs().len();
 
         assert!(unrolled.inputs().len() - net.inputs().len() == memory);

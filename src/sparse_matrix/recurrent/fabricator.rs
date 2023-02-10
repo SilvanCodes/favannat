@@ -4,7 +4,7 @@ use crate::{
     network::{
         net::unroll, EdgeLike, Fabricator, NetworkLike, NodeLike, Recurrent, StatefulFabricator,
     },
-    sparse_matrix::feedforward::fabricator::SparseMatrixFeedForwardFabricator,
+    sparse_matrix::feedforward::fabricator::SparseMatrixFeedforwardFabricator,
 };
 
 pub struct SparseMatrixRecurrentFabricator;
@@ -14,16 +14,16 @@ where
     N: NodeLike,
     E: EdgeLike,
 {
-    type Output = super::evaluator::RecurrentMatrixEvaluator;
+    type Output = super::evaluator::SparseMatrixRecurrentEvaluator;
 
     fn fabricate(net: &impl Recurrent<N, E>) -> Result<Self::Output, &'static str> {
         let unrolled = unroll(net);
-        let evaluator = SparseMatrixFeedForwardFabricator::fabricate(&unrolled)?;
+        let evaluator = SparseMatrixFeedforwardFabricator::fabricate(&unrolled)?;
         let memory = unrolled.outputs().len();
 
         assert!(unrolled.inputs().len() - net.inputs().len() == memory);
 
-        Ok(super::evaluator::RecurrentMatrixEvaluator {
+        Ok(super::evaluator::SparseMatrixRecurrentEvaluator {
             internal: DMatrix::from_element(1, memory, 0.0),
             evaluator,
             outputs: net.outputs().len(),
