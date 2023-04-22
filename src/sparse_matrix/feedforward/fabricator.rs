@@ -424,4 +424,26 @@ mod tests {
 
         assert_eq!(result, dmatrix![2.5]);
     }
+
+    // This test fails as currently it is necessary to run connections into all outputs.
+    //
+    // #[test]
+    // fn simple_net_evaluator_not_fully_connected_outputs() {
+    //     let some_net = Net::new(
+    //         1,
+    //         2,
+    //         nodes!('l', 'l', 'l'),
+    //         edges!(
+    //             0--1.0->1
+    //         ),
+    //     );
+
+    //     let evaluator = SparseMatrixFeedforwardFabricator::fabricate(&some_net).unwrap();
+    //     // println!("stages {:?}", evaluator.stages);
+
+    //     let result = evaluator.evaluate(dmatrix![5.0]);
+    //     // println!("result {:?}", result);
+
+    //     assert_eq!(result, dmatrix![5.0, 0.0]);
+    // }
 }
