@@ -39,7 +39,7 @@ use ndarray::Array1;
 #[cfg(feature = "ndarray")]
 impl NetworkIO for Array1<f64> {
     fn input(input: Self) -> DMatrix<f64> {
-        DMatrix::from_iterator(1, input.len(), input.into_iter)
+        DMatrix::from_iterator(1, input.len(), input.into_iter())
     }
     fn output(output: DMatrix<f64>) -> Self {
         Array1::from_iter(output.into_iter().cloned())
