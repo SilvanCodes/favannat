@@ -188,4 +188,38 @@ mod tests {
         let result = evaluator.evaluate(dmatrix![1.0]);
         assert_eq!(result, dmatrix![14.0]);
     }
+
+    #[test]
+    fn stateful_net_evaluator_self_recurrence() {
+        let mut some_net = Net::new(
+            1,
+            1,
+            nodes!('l', 'l'),
+            edges!(
+                0--1.0->1
+            ),
+        );
+
+        some_net.set_recurrent_edges(edges!(
+            1--1.0->1
+        ));
+
+        let mut evaluator = SparseMatrixRecurrentFabricator::fabricate(&some_net).unwrap();
+        // println!("stages {:?}", evaluator);
+
+        let result = evaluator.evaluate(dmatrix![1.0]);
+        assert_eq!(result, dmatrix![1.0]);
+
+        let result = evaluator.evaluate(dmatrix![1.0]);
+        assert_eq!(result, dmatrix![2.0]);
+
+        let result = evaluator.evaluate(dmatrix![0.0]);
+        assert_eq!(result, dmatrix![2.0]);
+
+        let result = evaluator.evaluate(dmatrix![0.0]);
+        assert_eq!(result, dmatrix![2.0]);
+
+        let result = evaluator.evaluate(dmatrix![1.0]);
+        assert_eq!(result, dmatrix![3.0]);
+    }
 }
