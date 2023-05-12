@@ -113,9 +113,7 @@ where
                     // figure out carries
                     for (index, &weight) in compute_or_carry.iter().enumerate() {
                         // if there is some partial dependency that is not carried yet
-                        if !next_available_nodes
-                            .iter()
-                            .any(|node| *node == available_nodes[index])
+                        if !next_available_nodes.contains(&available_nodes[index])
                             && !weight.is_nan()
                         {
                             let mut carry = vec![0.0; available_nodes.len()];
@@ -136,10 +134,7 @@ where
                 for (index, available_node) in available_nodes.iter().enumerate() {
                     if available_node == wanted_node {
                         // carry only if not carried already
-                        if !next_available_nodes
-                            .iter()
-                            .any(|node| *node == *available_node)
-                        {
+                        if !next_available_nodes.contains(available_node) {
                             let mut carry = vec![0.0; available_nodes.len()];
                             carry[index] = 1.0;
                             // add carry vector
