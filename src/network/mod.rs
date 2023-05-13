@@ -84,7 +84,7 @@ pub trait StatefulFabricator<N: NodeLike, E: EdgeLike> {
 
 /// Contains an example of a [`Recurrent`] [`NetworkLike`] structure.
 pub mod net {
-    use std::{collections::HashMap, ops::Shr};
+    use std::collections::HashMap;
 
     use super::{EdgeLike, NetworkLike, NodeLike, Recurrent};
 
