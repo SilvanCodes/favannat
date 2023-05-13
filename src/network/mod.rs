@@ -217,22 +217,10 @@ pub mod net {
     /// It restructures the edges and nodes to be evaluatable in a feedforward manner.
     /// The evaluation further depends on the implementations in [`crate::matrix::recurrent::evaluator`] and [`crate::sparse_matrix::recurrent::evaluator`] which handle the internal state.
     pub fn unroll<R: Recurrent<N, E>, N: NodeLike, E: EdgeLike>(recurrent: &R) -> Net {
-        let mut known_inputs = recurrent
-            .inputs()
+        let known_ids = recurrent
+            .nodes()
             .iter()
-            .map(|n| Node {
-                id: n.id(),
-                activation: n.activation(),
-            })
-            .collect::<Vec<_>>();
-
-        let mut known_outputs = recurrent
-            .outputs()
-            .iter()
-            .map(|n| Node {
-                id: n.id(),
-                activation: n.activation(),
-            })
+            .map(|node| node.id())
             .collect::<Vec<_>>();
 
         let mut known_edges = recurrent
@@ -245,14 +233,92 @@ pub mod net {
             })
             .collect::<Vec<_>>();
 
+        let mut known_recurrent_edges = recurrent
+            .recurrent_edges()
+            .iter()
+            .map(|e| Edge {
+                start: e.start(),
+                end: e.end(),
+                weight: e.weight(),
+            })
+            .collect::<Vec<_>>();
+
+        let mut new_low_ids = (usize::MIN..usize::MAX).filter(|tmp_id| !known_ids.contains(tmp_id));
+
+        // give static input nodes the lowest possible ids to not fuck up output order by sorting in feedforward fabricator
+        let mut known_inputs = recurrent
+            .inputs()
+            .iter()
+            .map(|n| {
+                let new_id = new_low_ids.next().unwrap();
+
+                // patch all edges to new id
+                for edge in &mut known_edges {
+                    if edge.start == n.id() {
+                        edge.start = new_id
+                    }
+                    if edge.end == n.id() {
+                        edge.end = new_id
+                    }
+                }
+
+                // patch all recurrent edges to new id
+                for edge in &mut known_recurrent_edges {
+                    if edge.start == n.id() {
+                        edge.start = new_id
+                    }
+                    if edge.end == n.id() {
+                        edge.end = new_id
+                    }
+                }
+
+                Node {
+                    id: new_id,
+                    activation: n.activation(),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        // give static output nodes the lowest possible ids to not fuck up output order by sorting in feedforward fabricator
+        let mut known_outputs = recurrent
+            .outputs()
+            .iter()
+            .map(|n| {
+                let new_id = new_low_ids.next().unwrap();
+
+                // patch all edges to new id
+                for edge in &mut known_edges {
+                    if edge.start == n.id() {
+                        edge.start = new_id
+                    }
+                    if edge.end == n.id() {
+                        edge.end = new_id
+                    }
+                }
+
+                // patch all recurrent edges to new id
+                for edge in &mut known_recurrent_edges {
+                    if edge.start == n.id() {
+                        edge.start = new_id
+                    }
+                    if edge.end == n.id() {
+                        edge.end = new_id
+                    }
+                }
+
+                Node {
+                    id: new_id,
+                    activation: n.activation(),
+                }
+            })
+            .collect::<Vec<_>>();
+
         let mut unroll_map: HashMap<usize, usize> = HashMap::new();
-        // WARN: upper half of usize is used for wrappping node ids
-        let mut tmp_ids = usize::MAX.shr(1)..usize::MAX;
 
         // create wrapping input for all original outputs, regardless of if they are used
         // this is to simplify the state transfer inside the stateful matrix evaluator
-        for output in recurrent.outputs() {
-            let wrapper_input_id = tmp_ids.next().unwrap();
+        for output in &known_outputs {
+            let wrapper_input_id = new_low_ids.next().unwrap();
 
             let wrapper_input_node = Node {
                 id: wrapper_input_id,
@@ -264,17 +330,17 @@ pub mod net {
             unroll_map.insert(output.id(), wrapper_input_id);
         }
 
-        // create all wrapping nodes and egdes for recurent connections
-        for recurrent_edge in recurrent.recurrent_edges() {
+        // create all wrapping nodes and egdes for recurrent connections with patched ids
+        for recurrent_edge in known_recurrent_edges {
             let recurrent_input = unroll_map.entry(recurrent_edge.start()).or_insert_with(|| {
-                let wrapper_input_id = tmp_ids.next().unwrap();
+                let wrapper_input_id = new_low_ids.next().unwrap();
 
                 let wrapper_input_node = Node {
                     id: wrapper_input_id,
                     activation: |val| val,
                 };
                 let wrapper_output_node = Node {
-                    id: tmp_ids.next().unwrap(),
+                    id: new_low_ids.next().unwrap(),
                     activation: |val| val,
                 };
 
