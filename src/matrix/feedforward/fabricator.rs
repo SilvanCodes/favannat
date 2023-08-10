@@ -230,6 +230,37 @@ mod tests {
         nodes,
     };
 
+    #[test]
+    fn reports_error_on_empty_edges() {
+        let net = Net::new(1, 1, nodes!('l', 'l'), Vec::new());
+
+        assert_eq!(
+            MatrixFeedforwardFabricator::fabricate(&net).err(),
+            Some("no edges present, net invalid")
+        );
+    }
+
+    #[test]
+    fn reports_error_on_missing_edges_to_output() {
+        let net = Net::new(1, 2, nodes!('l', 'l', 'l'), edges!(0--1.0->1));
+
+        assert_eq!(
+            MatrixFeedforwardFabricator::fabricate(&net).err(),
+            Some("dependencies resolved but not all outputs computable, net invalid")
+        );
+    }
+
+    // test uncomputable output
+    #[test]
+    fn reports_error_on_unresolvable_dependency() {
+        let net = Net::new(1, 1, nodes!('l', 'l', 'l'), edges!(1--0.5->2));
+
+        assert_eq!(
+            MatrixFeedforwardFabricator::fabricate(&net).err(),
+            Some("can't resolve dependencies, net invalid")
+        );
+    }
+
     // tests construction and evaluation of simplest network
     #[test]
     fn simple_net_evaluator_0() {
@@ -354,45 +385,6 @@ mod tests {
         // println!("result {:?}", result);
 
         assert_eq!(result, dmatrix![2.5, 1.25]);
-    }
-
-    // test unconnected net
-    #[test]
-    fn simple_net_evaluator_6() {
-        let some_net = Net::new(1, 1, nodes!('l', 'l'), Vec::new());
-
-        if let Err(message) = MatrixFeedforwardFabricator::fabricate(&some_net) {
-            assert_eq!(message, "no edges present, net invalid");
-        } else {
-            unreachable!();
-        }
-    }
-
-    // test uncomputable output
-    #[test]
-    fn simple_net_evaluator_7() {
-        let some_net = Net::new(1, 1, nodes!('l', 'l', 'l'), edges!(0--0.5->1));
-
-        if let Err(message) = MatrixFeedforwardFabricator::fabricate(&some_net) {
-            assert_eq!(
-                message,
-                "dependencies resolved but not all outputs computable, net invalid"
-            );
-        } else {
-            unreachable!();
-        }
-    }
-
-    // test uncomputable output
-    #[test]
-    fn simple_net_evaluator_8() {
-        let some_net = Net::new(1, 1, nodes!('l', 'l', 'l'), edges!(1--0.5->2));
-
-        if let Err(message) = MatrixFeedforwardFabricator::fabricate(&some_net) {
-            assert_eq!(message, "can't resolve dependencies, net invalid");
-        } else {
-            unreachable!();
-        }
     }
 
     #[test]
