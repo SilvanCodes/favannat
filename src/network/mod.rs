@@ -7,7 +7,7 @@ mod io;
 /// Declares a structure to have [`NodeLike`] properties.
 ///
 /// [`NodeLike`] provides the plumbing to accept user-defined structures and use them as nodes in this crates context.
-/// The implemntation of [`NodeLike::id`] needs to provide a unique identifier per node.
+/// The implementation of [`NodeLike::id`] needs to provide a unique identifier per node.
 pub trait NodeLike: Ord {
     fn id(&self) -> usize;
     fn activation(&self) -> fn(f64) -> f64;
@@ -246,8 +246,9 @@ pub mod net {
         let mut new_low_ids = (usize::MIN..usize::MAX).filter(|tmp_id| !known_ids.contains(tmp_id));
 
         // give static input nodes the lowest possible ids to not fuck up output order by sorting in feedforward fabricator
-        let mut known_inputs = recurrent
-            .inputs()
+        let mut known_inputs = recurrent.inputs();
+        known_inputs.sort_unstable();
+        let mut known_inputs = known_inputs
             .iter()
             .map(|n| {
                 let new_id = new_low_ids.next().unwrap();
@@ -280,8 +281,9 @@ pub mod net {
             .collect::<Vec<_>>();
 
         // give static output nodes the lowest possible ids to not fuck up output order by sorting in feedforward fabricator
-        let mut known_outputs = recurrent
-            .outputs()
+        let mut known_outputs = recurrent.outputs();
+        known_outputs.sort_unstable();
+        let mut known_outputs = known_outputs
             .iter()
             .map(|n| {
                 let new_id = new_low_ids.next().unwrap();

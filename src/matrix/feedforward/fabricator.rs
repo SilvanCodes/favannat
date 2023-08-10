@@ -47,17 +47,20 @@ where
         // contains activation functions corresponding to each stage
         let mut stage_transformations: Vec<crate::Transformations> = Vec::new();
         // set available nodes a.k.a net input
-        let mut available_nodes: Vec<usize> = net.inputs().iter().map(|n| n.id()).collect();
-        // sort to guarantee each input will be processed by the same node every time
+        let mut available_nodes = net.inputs();
+        // sort via Ord implementation of provided nodes to guarantee each input will be processed by the same node every time
         available_nodes.sort_unstable();
+        // reduce nodes to ids
+        let mut available_nodes: Vec<usize> = available_nodes.iter().map(|n| n.id()).collect();
 
         // println!("available_nodes {:?}", available_nodes);
 
         // set wanted nodes a.k.a net output
-        let mut wanted_nodes: Vec<usize> = net.outputs().iter().map(|n| n.id()).collect();
-        // sort to guarantee each output will appear in the same order every time
+        let mut wanted_nodes = net.outputs();
+        // sort via Ord implementation of provided nodes to guarantee each output will appear in the same order every time
         wanted_nodes.sort_unstable();
-        let wanted_nodes = wanted_nodes;
+        // reduce nodes to ids
+        let wanted_nodes: Vec<usize> = wanted_nodes.iter().map(|n| n.id()).collect();
 
         // println!("wanted_nodes {:?}", wanted_nodes);
 
