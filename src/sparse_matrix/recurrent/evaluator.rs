@@ -27,7 +27,7 @@ impl StatefulEvaluator for SparseMatrixRecurrentEvaluator {
             1,
             self.outputs,
             self.internal
-                .slice((0, 0), (1, self.outputs))
+                .view((0, 0), (1, self.outputs))
                 .iter()
                 .cloned(),
         ))

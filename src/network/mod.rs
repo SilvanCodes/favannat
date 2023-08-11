@@ -217,6 +217,8 @@ pub mod net {
     /// It restructures the edges and nodes to be evaluatable in a feedforward manner.
     /// The evaluation further depends on the implementations in [`crate::matrix::recurrent::evaluator`] and [`crate::sparse_matrix::recurrent::evaluator`] which handle the internal state.
     pub fn unroll<R: Recurrent<N, E>, N: NodeLike, E: EdgeLike>(recurrent: &R) -> Net {
+        // remember known ids as they can not be reused as otherwise
+        // during rewriting edge inputs/outputs stuff would be confused
         let known_ids = recurrent
             .nodes()
             .iter()
