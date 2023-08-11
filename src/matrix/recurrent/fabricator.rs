@@ -45,6 +45,24 @@ mod tests {
     };
 
     #[test]
+    fn computes_without_recurrent_edges() {
+        let some_net = Net::new(
+            1,
+            1,
+            nodes!('l', 'l'),
+            edges!(
+                0--1.0->1
+            ),
+        );
+
+        let mut evaluator = MatrixRecurrentFabricator::fabricate(&some_net).unwrap();
+        println!("stages {:?}", evaluator);
+
+        let result = evaluator.evaluate(dmatrix![5.0]);
+        assert_eq!(result, dmatrix![5.0]);
+    }
+
+    #[test]
     fn stateful_net_evaluator_0() {
         let mut some_net = Net::new(
             2,

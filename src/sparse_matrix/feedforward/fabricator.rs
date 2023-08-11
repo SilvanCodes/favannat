@@ -6,10 +6,9 @@ pub struct SparseMatrixFeedforwardFabricator;
 
 impl SparseMatrixFeedforwardFabricator {
     fn get_sparse(
-        (col_inds, row_inds, data): (Vec<usize>, Vec<usize>, Vec<f64>),
+        (col_inds, row_inds, data, rows): (Vec<usize>, Vec<usize>, Vec<f64>, usize),
     ) -> CscMatrix<f64> {
         let colums = col_inds.iter().max().unwrap() + 1;
-        let rows = row_inds.iter().max().unwrap() + 1;
 
         CscMatrix::from(
             &CooMatrix::try_from_triplets(rows, colums, row_inds, col_inds, data).unwrap(),
@@ -45,7 +44,7 @@ where
         // println!("initial dependency_graph {:#?}", dependency_graph);
 
         // contains list of matrices (stages) that form the computable net
-        let mut compute_stages: Vec<(Vec<usize>, Vec<usize>, Vec<f64>)> = Vec::new();
+        let mut compute_stages: Vec<(Vec<usize>, Vec<usize>, Vec<f64>, usize)> = Vec::new();
         // contains activation functions corresponding to each stage
         let mut stage_transformations: Vec<crate::Transformations> = Vec::new();
         // set available nodes a.k.a net input
@@ -214,7 +213,12 @@ where
             }
 
             // add resolved dependencies and transformations to compute stages
-            compute_stages.push((stage_column_indices, stage_row_indices, stage_data));
+            compute_stages.push((
+                stage_column_indices,
+                stage_row_indices,
+                stage_data,
+                available_nodes.len(),
+            ));
             stage_transformations.push(transformations);
 
             // set available nodes for next iteration
