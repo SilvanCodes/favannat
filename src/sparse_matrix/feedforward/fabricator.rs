@@ -1,17 +1,18 @@
-use crate::network::{EdgeLike, Fabricator, NetworkLike, NodeLike};
+use crate::network::{fabricate_stages, EdgeLike, Fabricator, NetworkLike, NodeLike, StageMatrix};
 use nalgebra_sparse::{CooMatrix, CscMatrix};
-use std::collections::HashMap;
 
 pub struct SparseMatrixFeedforwardFabricator;
 
-impl SparseMatrixFeedforwardFabricator {
-    fn get_sparse(
-        (col_inds, row_inds, data, rows): (Vec<usize>, Vec<usize>, Vec<f64>, usize),
-    ) -> CscMatrix<f64> {
-        let colums = col_inds.iter().max().unwrap() + 1;
-
+impl StageMatrix for CscMatrix<f64> {
+    fn from_stage_data(
+        rows: usize,
+        cols: usize,
+        row_indices: Vec<usize>,
+        col_indices: Vec<usize>,
+        data: Vec<f64>,
+    ) -> Self {
         CscMatrix::from(
-            &CooMatrix::try_from_triplets(rows, colums, row_inds, col_inds, data).unwrap(),
+            &CooMatrix::try_from_triplets(rows, cols, row_indices, col_indices, data).unwrap(),
         )
     }
 }
@@ -24,213 +25,10 @@ where
     type Output = super::evaluator::SparseMatrixFeedforwardEvaluator;
 
     fn fabricate(net: &impl NetworkLike<N, E>) -> Result<Self::Output, &'static str> {
-        // build dependency graph by collecting incoming edges per node
-        let mut dependency_graph: HashMap<usize, Vec<&E>> = HashMap::new();
-
-        for edge in net.edges() {
-            dependency_graph
-                .entry(edge.end())
-                .and_modify(|dependencies| dependencies.push(edge))
-                .or_insert_with(|| vec![edge]);
-        }
-
-        if dependency_graph.is_empty() {
-            return Err("no edges present, net invalid");
-        }
-
-        // keep track of dependencies present
-        let mut dependency_count = dependency_graph.len();
-
-        // println!("initial dependency_graph {:#?}", dependency_graph);
-
-        // contains list of matrices (stages) that form the computable net
-        let mut compute_stages: Vec<(Vec<usize>, Vec<usize>, Vec<f64>, usize)> = Vec::new();
-        // contains activation functions corresponding to each stage
-        let mut stage_transformations: Vec<crate::Transformations> = Vec::new();
-        // set available nodes a.k.a net input
-        let mut available_nodes = net.inputs();
-        // sort via Ord implementation of provided nodes to guarantee each input will be processed by the same node every time
-        available_nodes.sort_unstable();
-        // reduce nodes to ids
-        let mut available_nodes: Vec<usize> = available_nodes.iter().map(|n| n.id()).collect();
-
-        // println!("available_nodes {:?}", available_nodes);
-
-        // set wanted nodes a.k.a net output
-        let mut wanted_nodes = net.outputs();
-        // sort via Ord implementation of provided nodes to guarantee each output will appear in the same order every time
-        wanted_nodes.sort_unstable();
-        // reduce nodes to ids
-        let wanted_nodes: Vec<usize> = wanted_nodes.iter().map(|n| n.id()).collect();
-
-        // println!("wanted_nodes {:?}", wanted_nodes);
-
-        // gather compute stages by finding computable nodes and required carries until all dependencies are resolved
-        while !dependency_graph.is_empty() {
-            // setup new transformations
-            let mut transformations: crate::Transformations = Vec::new();
-            // list of nodes becoming available by compute stage
-            let mut next_available_nodes: Vec<usize> = Vec::new();
-
-            let mut column_index = 0;
-            let mut stage_column_indices: Vec<usize> = Vec::new();
-            let mut stage_row_indices = Vec::new();
-            let mut stage_data = Vec::new();
-
-            for (&dependent_node, dependencies) in dependency_graph.iter() {
-                let mut node_column_indices = Vec::new();
-                let mut node_row_indices = Vec::new();
-                let mut node_data = Vec::new();
-                // marker if all dependencies are available
-                let mut computable = true;
-                // check every dependency
-                for &dependency in dependencies {
-                    let mut found = false;
-                    for (row_index, &id) in available_nodes.iter().enumerate() {
-                        // index here is row index
-                        if dependency.start() == id {
-                            node_column_indices.push(column_index);
-                            node_row_indices.push(row_index);
-                            node_data.push(dependency.weight());
-                            found = true;
-                        }
-                    }
-                    // if any dependency is not found the node is not computable yet
-                    if !found {
-                        computable = false;
-                    }
-                }
-                if computable {
-                    stage_column_indices = [stage_column_indices, node_column_indices].concat();
-                    stage_row_indices = [stage_row_indices, node_row_indices].concat();
-                    stage_data = [stage_data, node_data].concat();
-                    // add activation function to stage transformations
-                    transformations.push(
-                        net.nodes()
-                            .iter()
-                            .find(|&node| node.id() == dependent_node)
-                            .unwrap()
-                            .activation(),
-                    );
-                    column_index += 1;
-                    // mark node as available in next iteration
-                    next_available_nodes.push(dependent_node);
-                } else {
-                    let mut carry_column_indices = Vec::new();
-                    let mut carry_row_indices = Vec::new();
-                    let mut carry_data = Vec::new();
-                    for row_index in node_row_indices {
-                        if !next_available_nodes.contains(&available_nodes[row_index]) {
-                            carry_row_indices.push(row_index);
-                            carry_column_indices.push(column_index);
-                            column_index += 1;
-                            carry_data.push(1.0);
-                            transformations.push(|val| val);
-                            next_available_nodes.push(available_nodes[row_index]);
-                        }
-                    }
-                    stage_column_indices = [stage_column_indices, carry_column_indices].concat();
-                    stage_row_indices = [stage_row_indices, carry_row_indices].concat();
-                    stage_data = [stage_data, carry_data].concat();
-                }
-            }
-
-            // keep any wanted notes if available (output)
-            for wanted_node in wanted_nodes.iter() {
-                for (row_index, available_node) in available_nodes.iter().enumerate() {
-                    if available_node == wanted_node {
-                        // carry only if not carried already
-                        if !next_available_nodes.contains(available_node) {
-                            stage_column_indices.push(column_index);
-                            column_index += 1;
-                            stage_row_indices.push(row_index);
-                            stage_data.push(1.0);
-
-                            // add identity function for carried vector
-                            transformations.push(|val| val);
-                            // add node as available
-                            next_available_nodes.push(*available_node);
-                        }
-                    }
-                }
-            }
-
-            // remove resolved dependencies from dependency graph
-            for node in next_available_nodes.iter() {
-                dependency_graph.remove(node);
-            }
-
-            // if no dependency was removed no progess was made
-            if dependency_graph.len() == dependency_count {
-                return Err("can't resolve dependencies, net invalid");
-            } else {
-                dependency_count = dependency_graph.len();
-            }
-
-            // println!("next_available_nodes {:?}", next_available_nodes);
-
-            // reorder last stage according to net output order (invalidates next_available_nodes order which wont be used after this point)
-            if dependency_graph.is_empty() {
-                // println!("stage_matrix {:?}", stage_matrix);
-
-                // let mut reordered_matrix = stage_matrix.clone();
-                let mut reordered_stage_column_indices =
-                    vec![usize::MAX; stage_column_indices.len()];
-                let mut reordered_transformations = transformations.clone();
-
-                let mut matched_wanted_count = 0;
-
-                for (old_column_index, available_node) in next_available_nodes.iter().enumerate() {
-                    for (new_column_index, wanted_node) in wanted_nodes.iter().enumerate() {
-                        if available_node == wanted_node {
-                            for (reordered_index, &old_index) in reordered_stage_column_indices
-                                .iter_mut()
-                                .zip(stage_column_indices.iter())
-                            {
-                                if old_index == old_column_index {
-                                    *reordered_index = new_column_index;
-                                }
-                            }
-
-                            reordered_transformations[new_column_index] =
-                                transformations[old_column_index];
-                            matched_wanted_count += 1;
-                            break;
-                        }
-                    }
-                }
-
-                if matched_wanted_count < wanted_nodes.len() {
-                    return Err(
-                        "dependencies resolved but not all outputs computable, net invalid",
-                    );
-                }
-
-                // println!("reordered_matrix {:?}", reordered_matrix);
-
-                stage_column_indices = reordered_stage_column_indices;
-                transformations = reordered_transformations;
-            }
-
-            // add resolved dependencies and transformations to compute stages
-            compute_stages.push((
-                stage_column_indices,
-                stage_row_indices,
-                stage_data,
-                available_nodes.len(),
-            ));
-            stage_transformations.push(transformations);
-
-            // set available nodes for next iteration
-            available_nodes = next_available_nodes;
-        }
-
+        let (stages, transformations) = fabricate_stages::<N, E, CscMatrix<f64>>(net)?;
         Ok(super::evaluator::SparseMatrixFeedforwardEvaluator {
-            stages: compute_stages
-                .into_iter()
-                .map(SparseMatrixFeedforwardFabricator::get_sparse)
-                .collect(),
-            transformations: stage_transformations,
+            stages,
+            transformations,
         })
     }
 }
