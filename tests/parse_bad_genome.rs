@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 
 use favannat::{
-    network::{EdgeLike, Fabricator, NetworkLike, NodeLike},
-    MatrixFeedforwardFabricator,
+    network::{EdgeLike, Fabricator, NetworkLike, NodeLike, Recurrent, StatefulFabricator},
+    MatrixFeedforwardFabricator, MatrixRecurrentFabricator,
 };
 use serde::Deserialize;
 
@@ -63,6 +63,7 @@ struct Genome {
     hidden: NodeList,
     outputs: NodeList,
     feed_forward: EdgeList,
+    recurrent: EdgeList,
 }
 
 /// Top-level structure of bad_genome.ron:
@@ -155,6 +156,12 @@ impl NetworkLike<GenomeNode, GenomeEdge> for Genome {
     }
 }
 
+impl Recurrent<GenomeNode, GenomeEdge> for Genome {
+    fn recurrent_edges(&self) -> Vec<&GenomeEdge> {
+        self.recurrent.0.iter().collect()
+    }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[test]
@@ -181,5 +188,34 @@ fn parse_bad_genome_and_fabricate() {
     assert_eq!(
         result.unwrap_err(),
         "can't resolve dependencies, net invalid"
+    );
+}
+
+// (RecurrentGenome wrapper removed — Genome already carries a `recurrent` field)
+
+#[test]
+fn fabricate_bad_genome_with_recurrent_fabricator() {
+    let ron_str = include_str!("../src/bad_genome.ron");
+    let parsed: BadGenomeFile =
+        ron::from_str(ron_str).expect("RON parsing of bad_genome.ron should succeed");
+
+    // The genome encodes its own split: feed_forward (DAG) + recurrent (time-delayed).
+    // One hidden node receives input ONLY through the recurrent field, making pure
+    // feedforward fabrication impossible.  The recurrent fabricator's unroll step
+    // converts the 17 recurrent edges into time-delayed wrapper connections, breaking
+    // the dependency and allowing the full network to be fabricated as a DAG.
+    let ff_count = parsed.child.feed_forward.0.len();
+    let rec_count = parsed.child.recurrent.0.len();
+    eprintln!("feed_forward: {ff_count} edges, recurrent: {rec_count} edges");
+
+    let result = MatrixRecurrentFabricator::fabricate(&parsed.child);
+    if let Err(ref e) = result {
+        eprintln!("Recurrent fabrication error: {e}");
+    }
+
+    assert!(
+        result.is_ok(),
+        "Expected recurrent fabrication to succeed; got: {:?}",
+        result.err()
     );
 }
