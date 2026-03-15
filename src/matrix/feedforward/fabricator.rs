@@ -11,6 +11,16 @@ impl StageMatrix for DMatrix<f64> {
         col_indices: Vec<usize>,
         data: Vec<f64>,
     ) -> Self {
+        debug_assert_eq!(
+            row_indices.len(),
+            col_indices.len(),
+            "from_stage_data: row_indices and col_indices must have the same length"
+        );
+        debug_assert_eq!(
+            row_indices.len(),
+            data.len(),
+            "from_stage_data: row_indices and data must have the same length"
+        );
         let mut m = DMatrix::zeros(rows, cols);
         for ((&c, &r), &v) in col_indices.iter().zip(row_indices.iter()).zip(data.iter()) {
             m[(r, c)] = v;
