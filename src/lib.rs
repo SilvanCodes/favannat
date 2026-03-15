@@ -27,5 +27,4 @@ pub use sparse_matrix::{
 
 pub use network::{Evaluator, Fabricator, StatefulEvaluator, StatefulFabricator};
 
-type Matrix = Vec<Vec<f64>>;
 type Transformations = Vec<fn(f64) -> f64>;

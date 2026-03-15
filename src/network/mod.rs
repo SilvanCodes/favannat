@@ -4,6 +4,8 @@ pub use self::io::NetworkIO;
 
 mod io;
 
+use std::collections::HashMap;
+
 /// Declares a structure to have [`NodeLike`] properties.
 ///
 /// [`NodeLike`] provides the plumbing to accept user-defined structures and use them as nodes in this crates context.
@@ -80,6 +82,190 @@ pub trait StatefulFabricator<N: NodeLike, E: EdgeLike> {
     type Output: StatefulEvaluator;
 
     fn fabricate(net: &impl Recurrent<N, E>) -> Result<Self::Output, &'static str>;
+}
+
+/// Abstracts over how a computation stage matrix is built from triplet (COO) data.
+///
+/// Implementing this trait allows a matrix type to be used as the backend for [`fabricate_stages`].
+pub trait StageMatrix: Sized {
+    fn from_stage_data(
+        rows: usize,
+        cols: usize,
+        row_indices: Vec<usize>,
+        col_indices: Vec<usize>,
+        data: Vec<f64>,
+    ) -> Self;
+}
+
+/// Core fabrication logic shared by all matrix-backed fabricators.
+///
+/// Resolves the computation stages for a [`NetworkLike`] structure using topological dependency
+/// resolution, carry propagation, and output reordering. The resulting stage matrices are built
+/// via [`StageMatrix::from_stage_data`], allowing both dense and sparse backends to reuse this
+/// single implementation.
+pub fn fabricate_stages<N, E, M>(
+    net: &impl NetworkLike<N, E>,
+) -> Result<(Vec<M>, Vec<crate::Transformations>), &'static str>
+where
+    N: NodeLike,
+    E: EdgeLike,
+    M: StageMatrix,
+{
+    let mut dependency_graph: HashMap<usize, Vec<&E>> = HashMap::new();
+    for edge in net.edges() {
+        dependency_graph
+            .entry(edge.end())
+            .and_modify(|deps| deps.push(edge))
+            .or_insert_with(|| vec![edge]);
+    }
+    if dependency_graph.is_empty() {
+        return Err("no edges present, net invalid");
+    }
+
+    let mut dependency_count = dependency_graph.len();
+    let mut compute_stages: Vec<(usize, usize, Vec<usize>, Vec<usize>, Vec<f64>)> = Vec::new();
+    let mut stage_transformations: Vec<crate::Transformations> = Vec::new();
+
+    let mut available_nodes = net.inputs();
+    available_nodes.sort_unstable();
+    let mut available_nodes: Vec<usize> = available_nodes.iter().map(|n| n.id()).collect();
+
+    let mut wanted_nodes = net.outputs();
+    wanted_nodes.sort_unstable();
+    let wanted_nodes: Vec<usize> = wanted_nodes.iter().map(|n| n.id()).collect();
+
+    while !dependency_graph.is_empty() {
+        let mut transformations: crate::Transformations = Vec::new();
+        let mut next_available_nodes: Vec<usize> = Vec::new();
+        let mut column_index = 0usize;
+        let mut stage_col_indices: Vec<usize> = Vec::new();
+        let mut stage_row_indices: Vec<usize> = Vec::new();
+        let mut stage_data: Vec<f64> = Vec::new();
+
+        for (&dependent_node, dependencies) in dependency_graph.iter() {
+            let mut node_col_indices = Vec::new();
+            let mut node_row_indices = Vec::new();
+            let mut node_data = Vec::new();
+            let mut computable = true;
+
+            for &dependency in dependencies {
+                let mut found = false;
+                for (row_index, &id) in available_nodes.iter().enumerate() {
+                    if dependency.start() == id {
+                        node_col_indices.push(column_index);
+                        node_row_indices.push(row_index);
+                        node_data.push(dependency.weight());
+                        found = true;
+                    }
+                }
+                if !found {
+                    computable = false;
+                }
+            }
+
+            if computable {
+                stage_col_indices.extend(node_col_indices);
+                stage_row_indices.extend(node_row_indices);
+                stage_data.extend(node_data);
+                let activation = net
+                    .nodes()
+                    .iter()
+                    .find(|&node| node.id() == dependent_node)
+                    .map(|node| node.activation())
+                    .ok_or("Invalid network: dependent node not found in nodes list")?;
+                transformations.push(activation);
+                column_index += 1;
+                next_available_nodes.push(dependent_node);
+            } else {
+                // carry partial dependencies forward
+                for row_index in node_row_indices {
+                    if !next_available_nodes.contains(&available_nodes[row_index]) {
+                        stage_row_indices.push(row_index);
+                        stage_col_indices.push(column_index);
+                        stage_data.push(1.0);
+                        column_index += 1;
+                        transformations.push(|val| val);
+                        next_available_nodes.push(available_nodes[row_index]);
+                    }
+                }
+            }
+        }
+
+        // carry wanted output nodes if already available
+        for wanted_node in wanted_nodes.iter() {
+            for (row_index, available_node) in available_nodes.iter().enumerate() {
+                if available_node == wanted_node && !next_available_nodes.contains(available_node) {
+                    stage_col_indices.push(column_index);
+                    stage_row_indices.push(row_index);
+                    stage_data.push(1.0);
+                    column_index += 1;
+                    transformations.push(|val| val);
+                    next_available_nodes.push(*available_node);
+                }
+            }
+        }
+
+        for node in next_available_nodes.iter() {
+            dependency_graph.remove(node);
+        }
+
+        if dependency_graph.len() == dependency_count {
+            return Err("can't resolve dependencies, net invalid");
+        } else {
+            dependency_count = dependency_graph.len();
+        }
+
+        // reorder last stage to match wanted output order
+        if dependency_graph.is_empty() {
+            let mut reordered_col_indices = vec![usize::MAX; stage_col_indices.len()];
+            let mut reordered_transformations = transformations.clone();
+            let mut matched_wanted_count = 0;
+
+            for (old_col, available_node) in next_available_nodes.iter().enumerate() {
+                for (new_col, wanted_node) in wanted_nodes.iter().enumerate() {
+                    if available_node == wanted_node {
+                        for (reordered, &old) in
+                            reordered_col_indices.iter_mut().zip(stage_col_indices.iter())
+                        {
+                            if old == old_col {
+                                *reordered = new_col;
+                            }
+                        }
+                        reordered_transformations[new_col] = transformations[old_col];
+                        matched_wanted_count += 1;
+                        break;
+                    }
+                }
+            }
+
+            if matched_wanted_count < wanted_nodes.len() {
+                return Err(
+                    "dependencies resolved but not all outputs computable, net invalid",
+                );
+            }
+
+            stage_col_indices = reordered_col_indices;
+            transformations = reordered_transformations;
+        }
+
+        compute_stages.push((
+            available_nodes.len(),
+            column_index,
+            stage_row_indices,
+            stage_col_indices,
+            stage_data,
+        ));
+        stage_transformations.push(transformations);
+        available_nodes = next_available_nodes;
+    }
+
+    Ok((
+        compute_stages
+            .into_iter()
+            .map(|(rows, cols, ri, ci, data)| M::from_stage_data(rows, cols, ri, ci, data))
+            .collect(),
+        stage_transformations,
+    ))
 }
 
 /// Contains an example of a [`Recurrent`] [`NetworkLike`] structure.
