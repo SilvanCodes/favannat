@@ -155,7 +155,7 @@ impl NetworkLike<GenomeNode, GenomeEdge> for Genome {
     }
 }
 
-// ── Test ──────────────────────────────────────────────────────────────────────
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[test]
 fn parse_bad_genome_and_fabricate() {
@@ -168,13 +168,18 @@ fn parse_bad_genome_and_fabricate() {
     // Step 2: Attempt to fabricate the child genome (crossover result).
     let result = MatrixFeedforwardFabricator::fabricate(&parsed.child);
 
-    // The genome is called "bad" — fabrication is expected to fail.
-    // Print the error to document *why* it is bad.
-    if let Err(ref e) = result {
-        eprintln!("Fabrication error (expected): {e}");
-    }
-    assert!(
-        result.is_err(),
-        "Expected fabrication of bad_genome child to fail, but it succeeded"
+    // The child genome is the result of NEAT crossover of the two parents.
+    // Analysis reveals an 11-node cycle in its feed_forward connections
+    // (10 hidden nodes + 1 output node), making it invalid for feedforward fabrication.
+    //
+    // Cycle: H(14211212388494148245) → H(3826633468684569139) → H(17077754657716914943)
+    //      → H(11797454570146984742) → H(15996739864361207706) → H(8672086569406954279)
+    //      → O(10763953748989339248) → H(17387659509746847695) → H(9986850205867386787)
+    //      → H(10477926725837074344) → H(11602570492947847242) → (back to start)
+    //
+    // The fabricator correctly returns "can't resolve dependencies, net invalid".
+    assert_eq!(
+        result.unwrap_err(),
+        "can't resolve dependencies, net invalid"
     );
 }

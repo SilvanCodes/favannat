@@ -233,4 +233,30 @@ mod tests {
 
         assert_eq!(result, dmatrix![2.5]);
     }
+
+    // Regression test: hidden node H2 is computed in the same final stage as output O.
+    // H1 feeds both H2 and O; H2 has no outgoing connection to O (dead-end hidden node).
+    // Bug: reorder assigns usize::MAX for H2's column → panic in matrix construction.
+    #[test]
+    fn hidden_node_computed_in_final_stage_with_output() {
+        // topology: I(0) → H1(1) → H2(2)
+        //                        ↘ O(3)
+        //           H2 is a dead-end (not connected to O)
+        let some_net = Net::new(
+            1, // inputs
+            1, // outputs
+            nodes!('l', 'l', 'l', 'l'), // I, H1, H2, O
+            edges!(
+                0--1.0->1,  // I → H1
+                1--1.0->2,  // H1 → H2  (H2 is a dead-end)
+                1--1.0->3   // H1 → O
+            ),
+        );
+        // This should succeed without panic
+        let result = MatrixFeedforwardFabricator::fabricate(&some_net);
+        assert!(result.is_ok(), "Expected fabrication to succeed, got: {:?}", result.err());
+        let evaluator = result.unwrap();
+        let out = evaluator.evaluate(dmatrix![2.0]);
+        assert_eq!(out, dmatrix![2.0]);
+    }
 }
