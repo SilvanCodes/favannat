@@ -167,13 +167,13 @@ where
                 stage_col_indices.extend(node_col_indices);
                 stage_row_indices.extend(node_row_indices);
                 stage_data.extend(node_data);
-                transformations.push(
-                    net.nodes()
-                        .iter()
-                        .find(|&node| node.id() == dependent_node)
-                        .unwrap()
-                        .activation(),
-                );
+                let activation = net
+                    .nodes()
+                    .iter()
+                    .find(|&node| node.id() == dependent_node)
+                    .map(|node| node.activation())
+                    .ok_or("Invalid network: dependent node not found in nodes list")?;
+                transformations.push(activation);
                 column_index += 1;
                 next_available_nodes.push(dependent_node);
             } else {
